@@ -1,0 +1,6 @@
+{
+  "name": "Xtream IPTV Manager",
+  "description": "A Windows-styled dashboard to manage, browse, and play streams from Xtream IPTV servers using external players with custom font styles and last server saving capabilities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
