@@ -446,28 +446,31 @@ export default function App() {
     return selected ? selected.css : '"Inter", sans-serif';
   }, [fontFamily]);
 
-  // Trigger standard media playback on double click
-  const handleStreamDoubleClick = (stream: IptvStream) => {
-    setSelectedStream(stream);
-    
-    // Determine the stream's final streaming direct source URL
-    let streamUrl = "";
+  // Determine standard streaming url for any stream
+  const getStreamSourceUrl = (stream: IptvStream, mode: StreamMode) => {
     if (isDemoMode) {
-      streamUrl = getMockStreamUrl(String(stream.stream_id));
+      return getMockStreamUrl(String(stream.stream_id));
     } else if (activeServer) {
       const cleanHost = activeServer.host.endsWith("/") ? activeServer.host.slice(0, -1) : activeServer.host;
       const user = encodeURIComponent(activeServer.username);
       const pass = encodeURIComponent(activeServer.password);
       const id = stream.stream_id;
 
-      if (streamMode === "live") {
-        streamUrl = `${cleanHost}/live/${user}/${pass}/${id}.ts`;
+      if (mode === "live") {
+        return `${cleanHost}/live/${user}/${pass}/${id}.ts`;
       } else {
         const ext = stream.container_extension || "mp4";
-        streamUrl = `${cleanHost}/${streamMode}/${user}/${pass}/${id}.${ext}`;
+        return `${cleanHost}/${mode}/${user}/${pass}/${id}.${ext}`;
       }
     }
+    return "";
+  };
 
+  // Trigger standard media playback on double click
+  const handleStreamDoubleClick = (stream: IptvStream) => {
+    setSelectedStream(stream);
+    
+    const streamUrl = getStreamSourceUrl(stream, streamMode);
     if (!streamUrl) return;
 
     // Generate and download a miniature .m3u playlist file
@@ -489,6 +492,41 @@ export default function App() {
     // Provide immediate on-screen acknowledgement
     const notificationText = `⚡ Launching "${stream.name}" instantly via default system media player (.m3u script generated and executed).`;
     setConnectError(notificationText);
+  };
+
+  // Generate and download a single consolidated .m3u playlist containing multiple streams
+  const handleExportPlaylist = (targetStreams: IptvStream[], filenameLabel: string) => {
+    if (targetStreams.length === 0) {
+      setConnectError("No streams available to export! Please connect/load a server or search some channels first.");
+      return;
+    }
+
+    let m3uContent = "#EXTM3U\n";
+    targetStreams.forEach((st) => {
+      const url = getStreamSourceUrl(st, streamMode);
+      if (url) {
+        // Find category name if possible
+        const cat = categories.find(c => String(c.category_id) === String(st.category_id));
+        const groupName = cat ? cat.category_name : (st.category_id || "Unsorted");
+        m3uContent += `#EXTINF:-1 tvg-id="${st.stream_id}" tvg-name="${st.name}" tvg-logo="${st.stream_icon || ""}" group-title="${groupName}",${st.name}\n${url}\n`;
+      }
+    });
+
+    const fileSafeLabel = filenameLabel.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    const filename = `xtream_flow_${fileSafeLabel}_playlist.m3u`;
+
+    const blob = new Blob([m3uContent], { type: "audio/x-mpegurl;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setConnectError(`🎉 Playlist exported! Generated a single consolidated M3U file with ${targetStreams.length.toLocaleString()} channels: "${filename}"`);
   };
 
   return (
@@ -660,7 +698,7 @@ export default function App() {
         <main className="flex-1 bg-slate-950 flex flex-col overflow-hidden">
           
           {/* Top Panel: Server Metadata Stats */}
-          <div className="p-4 border-b border-slate-900 bg-slate-900/10 grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+          <div className="p-4 border-b border-slate-900 bg-slate-900/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
             <div className="bg-slate-900/60 border border-slate-850 p-3 rounded flex items-center justify-between">
               <div>
                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Server Profile</div>
@@ -694,6 +732,31 @@ export default function App() {
                 </div>
               </div>
               <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+            </div>
+
+            <div className="bg-slate-900/60 border border-slate-850 p-2.5 rounded flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-1 text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">
+                <span>Playlist Exporter</span>
+                <FileDown className="w-4 h-4 text-sky-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                <button
+                  onClick={() => handleExportPlaylist(streams, `${streamMode}_all`)}
+                  disabled={streams.length === 0}
+                  className="py-1 px-1 bg-indigo-650 hover:bg-indigo-600 active:bg-indigo-700 disabled:opacity-30 disabled:hover:bg-indigo-650 font-semibold text-[10.5px] text-white rounded transition-all flex items-center justify-center gap-1 cursor-pointer truncate"
+                  title="Export all channels for the current Mode as a single consolidated M3U playlist"
+                >
+                  All ({streams.length})
+                </button>
+                <button
+                  onClick={() => handleExportPlaylist(filteredStreams, `${streamMode}_filtered`)}
+                  disabled={filteredStreams.length === 0}
+                  className="py-1 px-1 bg-slate-800 hover:bg-slate-750 active:bg-slate-850 border border-slate-705 disabled:opacity-30 disabled:hover:bg-slate-800 font-semibold text-[10.5px] text-gray-200 rounded transition-all flex items-center justify-center gap-1 cursor-pointer truncate"
+                  title="Export current category / search-filtered channels as a single consolidated M3U playlist"
+                >
+                  Filtered ({filteredStreams.length})
+                </button>
+              </div>
             </div>
           </div>
 

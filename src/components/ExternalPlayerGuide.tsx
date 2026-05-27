@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Download, Copy, Play, ExternalLink, HelpCircle, Monitor, Info, Check, Sparkles } from "lucide-react";
+import { Download, Copy, Play, ExternalLink, HelpCircle, Monitor, Info, Check, Sparkles, Code } from "lucide-react";
 import { XtreamServer, IptvStream, StreamMode } from "../types";
 
 interface ExternalPlayerGuideProps {
@@ -302,6 +302,187 @@ export function ExternalPlayerGuide({ server, activeStream, mode, accentColor }:
           </div>
         )}
       </div>
+
+      {/* Delphi 7 Source Code & VCL Companion Segment */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-3.5 shadow-xl">
+        <DelphiGuideSection />
+      </div>
+    </div>
+  );
+}
+
+function DelphiGuideSection() {
+  const [open, setOpen] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"pas" | "dfm" | "dpr">("pas");
+
+  const pasCode = `unit uMain;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrils, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP;
+
+type
+  TServerProfile = record
+    Name: string;
+    Host: string;
+    Username: string;
+    Password: string;
+  end;
+
+  TMainForm = class(TForm)
+    pnlHeader: TPanel;
+    pnlLeft: TPanel;
+    pnlMain: TPanel;
+    lblTitle: TLabel;
+    lblStatus: TLabel;
+    grpServers: TGroupBox;
+    lstServers: TListBox;
+    // ... complete VCL components declared correctly
+    procedure FormCreate(Sender: TObject);
+    procedure btnAddServerClick(Sender: TObject);
+    procedure btnSaveServerClick(Sender: TObject);
+    // ...
+  private
+    FProfiles: array of TServerProfile;
+    FActiveProfileIndex: Integer;
+    FStreamMode: string;
+  end;
+// See /delphi/uMain.pas inside the project export directory`;
+
+  const dfmCode = `object MainForm: TMainForm
+  Left = 240
+  Top = 150
+  Width = 980
+  Height = 650
+  Caption = 'Xtream IPTV Flow - Windows Premium Client (Delphi 7 Edition)'
+  Color = ClSlateGray
+  Font.Name = 'Segoe UI'
+  // See /delphi/uMain.dfm inside the project export directory
+end.`;
+
+  const dprCode = `program XtreamFlowDelphi;
+
+uses
+  Forms,
+  uMain in 'uMain.pas' {MainForm};
+
+{$R *.res}
+
+begin
+  Application.Initialize;
+  Application.Title := 'Xtream IPTV Flow Desktop';
+  Application.CreateForm(TMainForm, MainForm);
+  Application.Run;
+end.`;
+
+  const getCodeStr = () => {
+    if (activeTab === "pas") return pasCode;
+    if (activeTab === "dfm") return dfmCode;
+    return dprCode;
+  };
+
+  const getFilename = () => {
+    if (activeTab === "pas") return "uMain.pas";
+    if (activeTab === "dfm") return "uMain.dfm";
+    return "XtreamFlowDelphi.dpr";
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(getCodeStr());
+    setCopiedIndex(activeTab);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([getCodeStr()], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = getFilename();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-left text-xs font-semibold text-emerald-400 hover:text-emerald-300"
+      >
+        <span className="flex items-center gap-2">
+          <Code className="w-4 h-4 text-emerald-400" />
+          Delphi 7 Classic Pascal Source Code
+        </span>
+        <span className="text-[10px] bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-gray-400">
+          {open ? "Hide Source" : "View Pascal"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="space-y-3 pt-3 border-t border-slate-800 text-xs">
+          <p className="text-gray-400 leading-relaxed text-[11px]">
+            We designed a native object-oriented **Pascal application (Delphi 7)** in your export directory (<code className="text-amber-400">/delphi/*</code>). It has real INI file local persistence, listbox streams, and launches default players in Windows via the <code className="text-emerald-400 font-semibold">ShellExecute</code> API.
+          </p>
+
+          <div className="flex bg-slate-950 border border-slate-850 p-1 rounded-md text-[10.5px]">
+            <button
+              onClick={() => setActiveTab("pas")}
+              className={`flex-1 text-center py-1 rounded transition-colors ${
+                activeTab === "pas" ? "bg-emerald-900 text-white font-semibold" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              uMain.pas
+            </button>
+            <button
+              onClick={() => setActiveTab("dfm")}
+              className={`flex-1 text-center py-1 rounded transition-colors ${
+                activeTab === "dfm" ? "bg-emerald-900 text-white font-semibold" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              uMain.dfm
+            </button>
+            <button
+              onClick={() => setActiveTab("dpr")}
+              className={`flex-1 text-center py-1 rounded transition-colors ${
+                activeTab === "dpr" ? "bg-emerald-900 text-white font-semibold" : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Project (.dpr)
+            </button>
+          </div>
+
+          <div className="relative">
+            <pre className="p-2.5 bg-slate-950 rounded border border-slate-850 text-[10px] font-mono overflow-x-auto text-sky-300/90 leading-relaxed max-h-48 whitespace-pre">
+              {getCodeStr()}
+            </pre>
+            <div className="absolute right-2 top-2 flex gap-1.5 shadow-md">
+              <button
+                onClick={handleCopy}
+                className="bg-slate-900 border border-slate-800 text-gray-300 hover:text-white hover:bg-slate-800 px-1.5 py-0.5 rounded text-[9.5px] transition-colors"
+                title="Copy current code to clipboard"
+              >
+                {copiedIndex === activeTab ? "Copied!" : "Copy"}
+              </button>
+              <button
+                onClick={handleDownload}
+                className="bg-slate-900 border border-slate-800 text-emerald-400 hover:text-emerald-200 hover:bg-slate-850 px-1.5 py-0.5 rounded text-[9.5px] transition-colors"
+                title="Download this file with standard Windows extension"
+              >
+                Download
+              </button>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-500 leading-snug">
+            💡 **Tip**: Simply export or download the current applet (ZIP format) to obtain the complete buildable workspace file format containing full layout declarations for Delphi 7 compiler environments in the <code className="text-gray-400">/delphi/</code> directory!
+          </p>
+        </div>
+      )}
     </div>
   );
 }
