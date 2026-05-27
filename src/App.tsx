@@ -446,6 +446,51 @@ export default function App() {
     return selected ? selected.css : '"Inter", sans-serif';
   }, [fontFamily]);
 
+  // Trigger standard media playback on double click
+  const handleStreamDoubleClick = (stream: IptvStream) => {
+    setSelectedStream(stream);
+    
+    // Determine the stream's final streaming direct source URL
+    let streamUrl = "";
+    if (isDemoMode) {
+      streamUrl = getMockStreamUrl(String(stream.stream_id));
+    } else if (activeServer) {
+      const cleanHost = activeServer.host.endsWith("/") ? activeServer.host.slice(0, -1) : activeServer.host;
+      const user = encodeURIComponent(activeServer.username);
+      const pass = encodeURIComponent(activeServer.password);
+      const id = stream.stream_id;
+
+      if (streamMode === "live") {
+        streamUrl = `${cleanHost}/live/${user}/${pass}/${id}.ts`;
+      } else {
+        const ext = stream.container_extension || "mp4";
+        streamUrl = `${cleanHost}/${streamMode}/${user}/${pass}/${id}.${ext}`;
+      }
+    }
+
+    if (!streamUrl) return;
+
+    // Generate and download a miniature .m3u playlist file
+    // Windows associations will automatically trigger their default system player (e.g. VLC or PotPlayer) to execute the stream
+    const filename = `${stream.name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.m3u`;
+    const m3uContent = `#EXTM3U\n#EXTINF:-1 tvg-logo="${stream.stream_icon || ""}" group-title="${stream.category_id || ""}",${stream.name}\n${streamUrl}\n`;
+    
+    const blob = new Blob([m3uContent], { type: "audio/x-mpegurl" });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Provide immediate on-screen acknowledgement
+    const notificationText = `⚡ Launching "${stream.name}" instantly via default system media player (.m3u script generated and executed).`;
+    setConnectError(notificationText);
+  };
+
   return (
     <div 
       className="min-h-screen bg-slate-950 text-slate-200 flex flex-col overflow-hidden select-none"
@@ -751,9 +796,12 @@ export default function App() {
               
               {/* Central Catalog Table */}
               <div className="flex-1 flex flex-col min-w-0 border-r border-slate-900">
-                <div className="p-2.5 bg-slate-900/40 border-b border-slate-900 flex items-center justify-between text-xs text-gray-400 font-mono">
+                <div className="p-2.5 bg-slate-900/40 border-b border-slate-900 flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-400 font-mono gap-2">
                   <span>Selected Stream Segment Catalog ({filteredStreams.length} listings)</span>
-                  {isDemoMode && <span className="text-[10px] text-amber-500 animate-pulse font-bold">● Viewing Mock Channels</span>}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10.5px] text-emerald-400 font-semibold animate-pulse">💡 Double-click any item to play instantly</span>
+                    {isDemoMode && <span className="text-[10px] text-amber-500 font-bold">● Viewing Mock Channels</span>}
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3">
@@ -776,6 +824,8 @@ export default function App() {
                           <div
                             key={st.stream_id}
                             onClick={() => setSelectedStream(st)}
+                            onDoubleClick={() => handleStreamDoubleClick(st)}
+                            title="Double-click to open inside Windows default media player"
                             className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center gap-3 text-left relative ${
                               isChosen
                                 ? "bg-slate-800 border-zinc-500 shadow"

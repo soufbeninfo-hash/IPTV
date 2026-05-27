@@ -3,13 +3,31 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron-main.js",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "package": "electron-builder build --windows --dir"
+  },
+  "build": {
+    "appId": "com.nexusstream.iptv",
+    "productName": "Xtream IPTV Flow",
+    "files": [
+      "dist/**/*",
+      "electron-main.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "dist/icon.png"
+    }
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

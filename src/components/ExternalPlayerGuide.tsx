@@ -79,163 +79,229 @@ export function ExternalPlayerGuide({ server, activeStream, mode, accentColor }:
     URL.revokeObjectURL(url);
   };
 
+  const [showExeGuide, setShowExeGuide] = useState(false);
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 font-sans text-sm shadow-xl">
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-800">
-        <Monitor className="w-4 h-4 text-emerald-400" />
-        <h3 className="font-semibold text-white tracking-wide text-[13px]">Windows Playback Hub</h3>
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 font-sans text-sm shadow-xl">
+        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-800">
+          <Monitor className="w-4 h-4 text-emerald-400" />
+          <h3 className="font-semibold text-white tracking-wide text-[13px]">Windows Playback Hub</h3>
+        </div>
+
+        {!activeStream ? (
+          <div className="text-center py-6 text-gray-500 text-xs text-balance">
+            Select a channel or title to generate launch links & custom playlist files.
+          </div>
+        ) : (
+          <div className="space-y-3.5">
+            <div className="p-2.5 bg-slate-950 border border-slate-800/80 rounded">
+              <div className="text-[10px] text-sky-400 font-semibold font-mono uppercase tracking-wide mb-1">Target Media Stream</div>
+              <div className="text-xs font-semibold text-white truncate">{activeStream.name}</div>
+              <div className="text-[9.5px] font-mono text-gray-400 truncate mt-1 bg-slate-900 px-1.5 py-1 rounded select-all border border-slate-850">
+                {streamUrl}
+              </div>
+            </div>
+
+            <div>
+              <span className="block text-[11px] text-gray-400 mb-2 font-medium">Choose Launch Method for Windows:</span>
+              
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => setSelectedPlayer("m3u")}
+                  className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
+                    selectedPlayer === "m3u"
+                      ? "bg-slate-850 text-white border-zinc-500"
+                      : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
+                  }`}
+                >
+                  💾 Instant M3U (VLC/Any)
+                </button>
+                
+                <button
+                  onClick={() => setSelectedPlayer("potplayer")}
+                  className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
+                    selectedPlayer === "potplayer"
+                      ? "bg-slate-850 text-white border-zinc-500"
+                      : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
+                  }`}
+                >
+                  🚀 PotPlayer Link
+                </button>
+
+                <button
+                  onClick={() => setSelectedPlayer("vlc")}
+                  className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
+                    selectedPlayer === "vlc"
+                      ? "bg-slate-850 text-white border-zinc-500"
+                      : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
+                  }`}
+                >
+                  🍊 VLC App Link
+                </button>
+
+                <button
+                  onClick={() => setSelectedPlayer("copy")}
+                  className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
+                    selectedPlayer === "copy"
+                      ? "bg-slate-850 text-white border-zinc-500"
+                      : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
+                  }`}
+                >
+                  📋 Copy Link Only
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-850">
+              {selectedPlayer === "m3u" && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Downloads a mini M3U file. Double-clicking this in Windows will trigger your default external media player (MPC-HC, VLC, or PotPlayer) to boot and stream this channel instantly.
+                  </p>
+                  <button
+                    onClick={handleDownloadSingleM3u}
+                    className="w-full py-2 px-3 rounded hover:opacity-90 transition-all font-semibold text-xs text-white justify-center flex items-center gap-1.5 shadow-md"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Generate & Download .M3U Playlist
+                  </button>
+                </div>
+              )}
+
+              {selectedPlayer === "potplayer" && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Triggers PotPlayer Directly using the registered protocol handler on Windows. Make sure PotPlayer is installed on your machine.
+                  </p>
+                  <a
+                    href={getProtocolLink()}
+                    onClick={(e) => {
+                      // Let protocol launch naturally
+                    }}
+                    className="w-full py-2 px-3 rounded text-center hover:opacity-90 transition-all font-semibold text-xs text-white inline-flex items-center justify-center gap-1.5 shadow-md"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    Launch in PotPlayer
+                  </a>
+                </div>
+              )}
+
+              {selectedPlayer === "vlc" && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Attempts to deep-link straight to your VLC desktop application via the registered <code className="bg-slate-950 px-1 py-0.5 rounded text-rose-300">vlc://</code> protocol on Windows.
+                  </p>
+                  <a
+                    href={getProtocolLink()}
+                    className="w-full py-2 px-3 rounded text-center hover:opacity-90 transition-all font-semibold text-xs text-white inline-flex items-center justify-center gap-1.5 shadow-md"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Launch in VLC Media Player
+                  </a>
+                </div>
+              )}
+
+              {selectedPlayer === "copy" && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Copies the direct raw HLS/TS source link to your clipboard. You can paste this URL into VLC (<code className="bg-slate-950 px-1 rounded text-orange-400">Ctrl+N</code>) or PotPlayer to custom-stream manually.
+                  </p>
+                  <button
+                    onClick={handleCopy}
+                    className="w-full py-2 px-3 rounded hover:opacity-90 transition-all font-semibold text-xs text-white justify-center flex items-center gap-1.5 shadow-md"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        Copied with Success!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        Copy stream URL to Clipboard
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="p-2 bg-slate-950/50 border border-slate-850/50 rounded flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-gray-400 text-balance leading-tight">
+                IPTV servers run best on Windows with <strong className="text-gray-300">VLC</strong> or <strong className="text-gray-300">PotPlayer</strong>. If a feed buffers, use PotPlayer which excels with MPEG-TS feeds.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {!activeStream ? (
-        <div className="text-center py-6 text-gray-500 text-xs text-balance">
-          Select a channel or title to generate launch links & custom playlist files.
-        </div>
-      ) : (
-        <div className="space-y-3.5">
-          <div className="p-2.5 bg-slate-950 border border-slate-800/80 rounded">
-            <div className="text-[10px] text-sky-400 font-semibold font-mono uppercase tracking-wide mb-1">Target Media Stream</div>
-            <div className="text-xs font-semibold text-white truncate">{activeStream.name}</div>
-            <div className="text-[9.5px] font-mono text-gray-400 truncate mt-1 bg-slate-900 px-1.5 py-1 rounded select-all border border-slate-850">
-              {streamUrl}
-            </div>
-          </div>
+      {/* Standalone Windows 11 EXE packaging guide */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-3.5 shadow-xl">
+        <button
+          onClick={() => setShowExeGuide(!showExeGuide)}
+          className="w-full flex items-center justify-between text-left text-xs font-semibold text-sky-400 hover:text-sky-300"
+        >
+          <span className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-sky-400" />
+            Build Standalone Windows 11 App (.EXE)
+          </span>
+          <span className="text-[10px] bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-gray-400">
+            {showExeGuide ? "Collapse" : "Open Guide"}
+          </span>
+        </button>
 
-          <div>
-            <span className="block text-[11px] text-gray-400 mb-2 font-medium">Choose Launch Method for Windows:</span>
-            
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => setSelectedPlayer("m3u")}
-                className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
-                  selectedPlayer === "m3u"
-                    ? "bg-slate-850 text-white border-zinc-500"
-                    : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
-                }`}
-              >
-                💾 Instant M3U (VLC/Any)
-              </button>
-              
-              <button
-                onClick={() => setSelectedPlayer("potplayer")}
-                className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
-                  selectedPlayer === "potplayer"
-                    ? "bg-slate-850 text-white border-zinc-500"
-                    : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
-                }`}
-              >
-                🚀 PotPlayer Link
-              </button>
-
-              <button
-                onClick={() => setSelectedPlayer("vlc")}
-                className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
-                  selectedPlayer === "vlc"
-                    ? "bg-slate-850 text-white border-zinc-500"
-                    : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
-                }`}
-              >
-                🍊 VLC App Link
-              </button>
-
-              <button
-                onClick={() => setSelectedPlayer("copy")}
-                className={`py-1.5 px-2.5 rounded text-left text-xs font-medium border transition-all ${
-                  selectedPlayer === "copy"
-                    ? "bg-slate-850 text-white border-zinc-500"
-                    : "bg-slate-950 text-gray-400 border-slate-850 hover:bg-slate-900"
-                }`}
-              >
-                📋 Copy Link Only
-              </button>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-slate-850">
-            {selectedPlayer === "m3u" && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Downloads a mini M3U file. Double-clicking this in Windows will trigger your default external media player (MPC-HC, VLC, or PotPlayer) to boot and stream this channel instantly.
-                </p>
-                <button
-                  onClick={handleDownloadSingleM3u}
-                  className="w-full py-2 px-3 rounded hover:opacity-90 transition-all font-semibold text-xs text-white justify-center flex items-center gap-1.5 shadow-md"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Generate & Download .M3U Playlist
-                </button>
-              </div>
-            )}
-
-            {selectedPlayer === "potplayer" && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Triggers PotPlayer Directly using the registered protocol handler on Windows. Make sure PotPlayer is installed on your machine.
-                </p>
-                <a
-                  href={getProtocolLink()}
-                  onClick={(e) => {
-                    // Let protocol launch naturally
-                  }}
-                  className="w-full py-2 px-3 rounded text-center hover:opacity-90 transition-all font-semibold text-xs text-white inline-flex items-center justify-center gap-1.5 shadow-md"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  Launch in PotPlayer
-                </a>
-              </div>
-            )}
-
-            {selectedPlayer === "vlc" && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Attempts to deep-link straight to your VLC desktop application via the registered <code className="bg-slate-950 px-1 py-0.5 rounded text-rose-300">vlc://</code> protocol on Windows.
-                </p>
-                <a
-                  href={getProtocolLink()}
-                  className="w-full py-2 px-3 rounded text-center hover:opacity-90 transition-all font-semibold text-xs text-white inline-flex items-center justify-center gap-1.5 shadow-md"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Launch in VLC Media Player
-                </a>
-              </div>
-            )}
-
-            {selectedPlayer === "copy" && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Copies the direct raw HLS/TS source link to your clipboard. You can paste this URL into VLC (<code className="bg-slate-950 px-1 rounded text-orange-400">Ctrl+N</code>) or PotPlayer to custom-stream manually.
-                </p>
-                <button
-                  onClick={handleCopy}
-                  className="w-full py-2 px-3 rounded hover:opacity-90 transition-all font-semibold text-xs text-white justify-center flex items-center gap-1.5 shadow-md"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      Copied with Success!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      Copy stream URL to Clipboard
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="p-2 bg-slate-950/50 border border-slate-850/50 rounded flex items-start gap-1.5">
-            <Info className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-gray-400 text-balance leading-tight">
-              IPTV servers run best on Windows with <strong className="text-gray-300">VLC</strong> or <strong className="text-gray-300">PotPlayer</strong>. If a feed buffers, use PotPlayer which excels with MPEG-TS feeds.
+        {showExeGuide && (
+          <div className="mt-3 space-y-3 pt-3 border-t border-slate-800 text-xs">
+            <p className="text-gray-400 leading-relaxed text-[11px]">
+              We have pre-configured <strong className="text-white">Electron App compilation files</strong> inside this source repo. You can turn this web project into a fully functional, desktop-isolated <strong className="text-white">Windows 11 Executable (.exe)</strong> that runs with direct window controls instantly!
             </p>
+
+            <div className="p-2.5 bg-slate-950 rounded border border-slate-850 space-y-2">
+              <span className="block text-[10px] text-sky-400 font-bold uppercase tracking-widest font-mono">1-Click Local Build Script:</span>
+              <p className="text-gray-400 leading-tight text-[10.5px]">
+                We created a build automation batch script for you: <code className="text-rose-400">local-windows-build.bat</code>. When you export or clone this repository, you only need to double-click that file on your Windows machine to bundle it into an EXE.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest text-[9.5px]">Steps to compile locally:</span>
+              <ol className="list-decimal pl-4 space-y-1.5 text-gray-350 text-[11px]">
+                <li>
+                  Click the <strong className="text-gray-200">Settings Icon (Top-Right)</strong> in AI Studio and select <strong className="text-gray-200">Export as ZIP</strong> (or sync to GitHub).
+                </li>
+                <li>
+                  Unzip the folder onto your Windows 11 computers.
+                </li>
+                <li>
+                  Ensure <strong className="text-gray-250">Node.js (v18+)</strong> is installed.
+                </li>
+                <li>
+                  Double-click <code className="text-emerald-400 font-semibold bg-slate-950 px-1 py-0.5 rounded">local-windows-build.bat</code> from within the folder.
+                </li>
+                <li>
+                  The script handles compiling the proxy backend and saving your portable binary in: <br />
+                  <code className="text-slate-400 text-[10px]">dist\win-unpacked\Xtream IPTV Flow.exe</code>
+                </li>
+              </ol>
+            </div>
+
+            <div className="pt-1.5">
+              <button
+                onClick={() => alert("Ready! Just export the current repository as a ZIP using the settings menu at the top-right to unpack your ready-made compiler file alongside all assets.")}
+                className="w-full text-center py-1.5 px-3 bg-slate-950 hover:bg-slate-850 text-white rounded font-medium border border-slate-800 transition-colors text-[11px]"
+              >
+                💾 Confirm Ready for Export
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
