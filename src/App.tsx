@@ -176,6 +176,18 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStream, setSelectedStream] = useState<IptvStream | null>(null);
 
+  // Time shift option in hours (0, 1, 2, 3, 4, -1, -2, -3, -4)
+  const [timeshift, setTimeshift] = useState<number>(() => {
+    const saved = localStorage.getItem("xtream_timeshift");
+    return saved ? parseInt(saved) : 0;
+  });
+
+  const handleTimeshiftChange = (val: number) => {
+    setTimeshift(val);
+    localStorage.setItem("xtream_timeshift", String(val));
+    setConnectError(`Time Shift adjusted to ${val > 0 ? "+" : ""}${val} hour${Math.abs(val) > 1 || val === 0 ? "s" : ""}. URL builders updated!`);
+  };
+
   // Get active accent config
   const activeAccent = useMemo(() => {
     return ACCENTS_LIST.find(a => a.id === accentColorId) || ACCENTS_LIST[0];
@@ -448,8 +460,9 @@ export default function App() {
 
   // Determine standard streaming url for any stream
   const getStreamSourceUrl = (stream: IptvStream, mode: StreamMode) => {
+    let baseUrl = "";
     if (isDemoMode) {
-      return getMockStreamUrl(String(stream.stream_id));
+      baseUrl = getMockStreamUrl(String(stream.stream_id));
     } else if (activeServer) {
       const cleanHost = activeServer.host.endsWith("/") ? activeServer.host.slice(0, -1) : activeServer.host;
       const user = encodeURIComponent(activeServer.username);
@@ -457,13 +470,17 @@ export default function App() {
       const id = stream.stream_id;
 
       if (mode === "live") {
-        return `${cleanHost}/live/${user}/${pass}/${id}.ts`;
+        baseUrl = `${cleanHost}/live/${user}/${pass}/${id}.ts`;
       } else {
         const ext = stream.container_extension || "mp4";
-        return `${cleanHost}/${mode}/${user}/${pass}/${id}.${ext}`;
+        baseUrl = `${cleanHost}/${mode}/${user}/${pass}/${id}.${ext}`;
       }
     }
-    return "";
+
+    if (baseUrl && timeshift !== 0) {
+      baseUrl += baseUrl.includes("?") ? `&timeshift=${timeshift}` : `?timeshift=${timeshift}`;
+    }
+    return baseUrl;
   };
 
   // Trigger standard media playback on double click
@@ -809,16 +826,39 @@ export default function App() {
               </button>
             </div>
 
-            {/* Quick Stream Search Bar */}
-            <div className="relative self-stretch sm:w-60">
-              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500" />
-              <input
-                type="text"
-                placeholder={`Search ${streamMode === 'live' ? 'live channels' : 'movies'}...`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900/90 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-              />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 self-stretch sm:self-auto">
+              {/* Timeshift Selector */}
+              <div className="flex items-center gap-1.5 shrink-0 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5">
+                <Clock className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider hidden xs:inline">Timeshift:</span>
+                <select
+                  value={timeshift}
+                  onChange={(e) => handleTimeshiftChange(parseInt(e.target.value))}
+                  className="bg-transparent text-xs text-white border-none outline-none focus:ring-0 cursor-pointer font-semibold py-0.5"
+                >
+                  <option value={0} className="bg-slate-900">None</option>
+                  <option value={1} className="bg-slate-900">+1 Hour</option>
+                  <option value={2} className="bg-slate-900">+2 Hours</option>
+                  <option value={3} className="bg-slate-900">+3 Hours</option>
+                  <option value={4} className="bg-slate-900">+4 Hours</option>
+                  <option value={-1} className="bg-slate-900">-1 Hour</option>
+                  <option value={-2} className="bg-slate-900">-2 Hours</option>
+                  <option value={-3} className="bg-slate-900">-3 Hours</option>
+                  <option value={-4} className="bg-slate-900">-4 Hours</option>
+                </select>
+              </div>
+
+              {/* Quick Stream Search Bar */}
+              <div className="relative w-full sm:w-60">
+                <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder={`Search ${streamMode === 'live' ? 'live channels' : 'movies'}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-900/90 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
             </div>
           </div>
 
