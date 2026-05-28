@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP, StrUtils, Clipbrd;
+  Dialogs, StdCtrls, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP, StrUtils, Clipbrd, jpeg;
 
 type
   TServerProfile = record
@@ -66,6 +66,11 @@ type
     lblFontChoice: TLabel;
     cmbFonts: TComboBox;
     lblActiveProfile: TLabel;
+    grpNowPlaying: TGroupBox;
+    lblNowTitle: TLabel;
+    imgNowPlaying: TImage;
+    lblNowDetails: TLabel;
+    lblNowSubDetails: TLabel;
     procedure FormCreate(Sender: TObject);
     procedure btnAddServerClick(Sender: TObject);
     procedure btnSaveServerClick(Sender: TObject);
@@ -81,6 +86,7 @@ type
     procedure btnExportConsolidatedClick(Sender: TObject);
     procedure btnCopyLinkClick(Sender: TObject);
     procedure lstStreamsDblClick(Sender: TObject);
+    procedure lstStreamsClick(Sender: TObject);
     procedure cmbFontsChange(Sender: TObject);
     procedure cmbTimeshiftChange(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
@@ -93,6 +99,8 @@ type
     FInSeriesFolder: Boolean;
     FActiveSeriesId: string;
     FActiveSeriesName: string;
+    FInLiveFolder: Boolean;
+    FActiveLiveCatId: string;
     procedure LoadPreferences;
     procedure SavePreferences;
     procedure ReadProfilesFromIni(Ini: TIniFile);
@@ -106,6 +114,8 @@ type
     function BuildStreamUrl(StreamId, StreamExt: string): string;
     procedure FetchSeriesEpisodes(const SeriesId: string);
     procedure ParseAndPopulateEpisodes(const JsonData: string);
+    procedure DrawPlaceholderLogo(const ChannelName: string);
+    procedure UpdatePlayingItem(const StreamId: string);
   public
     { Public declarations }
   end;
@@ -123,6 +133,7 @@ begin
   FActiveProfileIndex := -1;
   FStreamMode := 'live';
   FInSeriesFolder := False;
+  FInLiveFolder := False;
   
   // Populate configuration font options for Windows 11
   cmbFonts.Items.Clear;
@@ -146,6 +157,7 @@ begin
   cmbTimeshift.ItemIndex := 0;
 
   LoadPreferences;
+  UpdatePlayingItem('');
 end;
 
 procedure TMainForm.LoadPreferences;
@@ -249,6 +261,7 @@ end;
 procedure TMainForm.btnAddServerClick(Sender: TObject);
 begin
   grpNewServer.Visible := True;
+  grpNowPlaying.Visible := False;
   edtName.SetFocus;
 end;
 
@@ -272,6 +285,7 @@ begin
 
   lstServers.Items.Add(FProfiles[Idx].Name);
   grpNewServer.Visible := False;
+  grpNowPlaying.Visible := True;
   
   // Clean inputs
   edtName.Text := '';
@@ -445,6 +459,8 @@ var
   UniqueCats: array of string;
   CatCount: Integer;
   Exists: Boolean;
+  TempStreams: array of TStreamItem;
+  TempCount: Integer;
 begin
   lstStreams.Items.BeginUpdate;
   try
@@ -452,7 +468,7 @@ begin
     SetLength(FStreams, 0);
     
     P := 1;
-    Count := 0;
+    TempCount := 0;
     while True do
     begin
       PStart := PosEx('{', JsonData, P);
@@ -490,34 +506,34 @@ begin
       begin
         if SId = '' then SId := '0';
         
-        SetLength(FStreams, Count + 1);
-        FStreams[Count].Name := SName;
-        FStreams[Count].StreamId := SId;
-        FStreams[Count].CategoryId := SCatId;
-        FStreams[Count].Icon := SIcon;
-        FStreams[Count].EpgChannelId := SEpg;
-        Inc(Count);
+        SetLength(TempStreams, TempCount + 1);
+        TempStreams[TempCount].Name := SName;
+        TempStreams[TempCount].StreamId := SId;
+        TempStreams[TempCount].CategoryId := SCatId;
+        TempStreams[TempCount].Icon := SIcon;
+        TempStreams[TempCount].EpgChannelId := SEpg;
+        Inc(TempCount);
       end;
       
       P := PEnd + 1;
     end;
 
-    if Count = 0 then
+    if TempCount = 0 then
     begin
       lblStatus.Caption := 'List parsing failed or empty response.';
       PopulateMockStreams;
       Exit;
     end;
 
-    // Collect Unique Categories
+    // Collect Unique Categories from TempStreams
     SetLength(UniqueCats, 0);
     CatCount := 0;
-    for I := 0 to Count - 1 do
+    for I := 0 to TempCount - 1 do
     begin
       Exists := False;
       for J := 0 to CatCount - 1 do
       begin
-        if UniqueCats[J] = FStreams[I].CategoryId then
+        if UniqueCats[J] = TempStreams[I].CategoryId then
         begin
           Exists := True;
           Break;
@@ -526,41 +542,101 @@ begin
       if not Exists then
       begin
         SetLength(UniqueCats, CatCount + 1);
-        UniqueCats[CatCount] := FStreams[I].CategoryId;
+        UniqueCats[CatCount] := TempStreams[I].CategoryId;
         Inc(CatCount);
       end;
     end;
 
-    // Now populate ListBox grouped with '+' signs!
-    for I := 0 to CatCount - 1 do
+    // Handle display based on StreamMode and folder state
+    if (FStreamMode = 'live') and (not FInLiveFolder) then
     begin
-      // Add Group Header prefixed with '+'
-      lstStreams.Items.Add('+ ' + UpperCase(UniqueCats[I]));
-      
-      // Add Streams belonging to this Category ID
-      for J := 0 to Count - 1 do
+      // Parent TV category folders!
+      SetLength(FStreams, CatCount);
+      lstStreams.Items.Add('+ LIVE CATEGORIES');
+      for I := 0 to CatCount - 1 do
       begin
-        if FStreams[J].CategoryId = UniqueCats[I] then
+        FStreams[I].Name := UniqueCats[I];
+        FStreams[I].StreamId := UniqueCats[I];
+        FStreams[I].CategoryId := 'Category Folder';
+        FStreams[I].Icon := '';
+        FStreams[I].EpgChannelId := '';
+        
+        lstStreams.Items.Add('   📂 ' + UniqueCats[I] + ' [ID: ' + UniqueCats[I] + ']');
+      end;
+      lblStatus.Caption := 'Displaying ' + IntToStr(CatCount) + ' Live TV category folders.';
+    end
+    else
+    begin
+      // If we are in a live folder, we add a back button as index 0, and then list only items from FActiveLiveCatId
+      if (FStreamMode = 'live') and FInLiveFolder then
+      begin
+        SetLength(FStreams, 1);
+        FStreams[0].Name := 'go_back';
+        FStreams[0].StreamId := 'go_back';
+        FStreams[0].CategoryId := 'System';
+        FStreams[0].Icon := '';
+        FStreams[0].EpgChannelId := '';
+        
+        lstStreams.Items.Add('   ⬅️ [BACK TO LIVE CATEGORIES] [ID: go_back]');
+        lstStreams.Items.Add('+ ' + UpperCase(FActiveLiveCatId));
+        
+        Count := 1;
+        for I := 0 to TempCount - 1 do
         begin
-          ItemText := '   ';
-          if FStreamMode = 'series' then
-            ItemText := ItemText + '📂 '
-          else if FStreams[J].Icon <> '' then
-            ItemText := ItemText + '🖼️ '
-          else
-            ItemText := ItemText + '📺 ';
+          if TempStreams[I].CategoryId = FActiveLiveCatId then
+          begin
+            SetLength(FStreams, Count + 1);
+            FStreams[Count] := TempStreams[I];
+            
+            ItemText := '   ';
+            if TempStreams[I].Icon <> '' then
+              ItemText := ItemText + '🖼️ '
+            else
+              ItemText := ItemText + '📺 ';
 
-          ItemText := ItemText + FStreams[J].Name + ' [ID: ' + FStreams[J].StreamId + ']';
-          
-          if FStreams[J].EpgChannelId <> '' then
-            ItemText := ItemText + ' (EPG: ' + FStreams[J].EpgChannelId + ')';
-
-          lstStreams.Items.Add(ItemText);
+            ItemText := ItemText + TempStreams[I].Name + ' [ID: ' + TempStreams[I].StreamId + ']';
+            if TempStreams[I].EpgChannelId <> '' then
+              ItemText := ItemText + ' (EPG: ' + TempStreams[I].EpgChannelId + ')';
+              
+            lstStreams.Items.Add(ItemText);
+            Inc(Count);
+          end;
         end;
+        lblStatus.Caption := 'Displaying category folder: ' + FActiveLiveCatId + ' with ' + IntToStr(Count - 1) + ' channels!';
+      end
+      else
+      begin
+        // Movies or Series or standard fallback (flat grouped)
+        SetLength(FStreams, TempCount);
+        for I := 0 to TempCount - 1 do
+          FStreams[I] := TempStreams[I];
+          
+        for I := 0 to CatCount - 1 do
+        begin
+          lstStreams.Items.Add('+ ' + UpperCase(UniqueCats[I]));
+          for J := 0 to TempCount - 1 do
+          begin
+            if FStreams[J].CategoryId = UniqueCats[I] then
+            begin
+              ItemText := '   ';
+              if FStreamMode = 'series' then
+                ItemText := ItemText + '📂 '
+              else if FStreams[J].Icon <> '' then
+                ItemText := ItemText + '🖼️ '
+              else
+                ItemText := ItemText + '📺 ';
+
+              ItemText := ItemText + FStreams[J].Name + ' [ID: ' + FStreams[J].StreamId + ']';
+              if FStreams[J].EpgChannelId <> '' then
+                ItemText := ItemText + ' (EPG: ' + FStreams[J].EpgChannelId + ')';
+
+              lstStreams.Items.Add(ItemText);
+            end;
+          end;
+        end;
+        lblStatus.Caption := 'Successfully parsed & grouped ' + IntToStr(TempCount) + ' channels dynamically!';
       end;
     end;
-
-    lblStatus.Caption := 'Successfully parsed & grouped ' + IntToStr(Count) + ' channels dynamically!';
   finally
     lstStreams.Items.EndUpdate;
   end;
@@ -602,23 +678,130 @@ begin
   lstStreams.Items.Clear;
   if FStreamMode = 'live' then
   begin
-    lstStreams.Items.Add('+ GLOBAL NEWS & SCIENCE');
-    lstStreams.Items.Add('   🖼️ NASA HD Live Space Stream [ID: nasa_hd] (EPG: NASA_TV)');
-    lstStreams.Items.Add('   🖼️ DW English News Global 24/7 [ID: dw_news] (EPG: DW_WORLD)');
-    lstStreams.Items.Add('+ INTERNATIONAL SPORTS');
-    lstStreams.Items.Add('   🖼️ Red Bull TV Ultimate Extreme Sports [ID: redbull_tv] (EPG: REDBULL_LIVE)');
-    lstStreams.Items.Add('   📺 France 24 International Live Feed [ID: france24] (EPG: FRANCE24_EN)');
-  end
-  else if FStreamMode = 'movie' then
+    if not FInLiveFolder then
+    begin
+      SetLength(FStreams, 2);
+      
+      FStreams[0].Name := 'Global News & Science';
+      FStreams[0].StreamId := 'news_science';
+      FStreams[0].CategoryId := 'System';
+      FStreams[0].Icon := '';
+      FStreams[0].EpgChannelId := '';
+
+      FStreams[1].Name := 'International Sports';
+      FStreams[1].StreamId := 'sports';
+      FStreams[1].CategoryId := 'System';
+      FStreams[1].Icon := '';
+      FStreams[1].EpgChannelId := '';
+
+      lstStreams.Items.Add('+ LIVE CATEGORIES');
+      lstStreams.Items.Add('   📂 Global News & Science [ID: news_science]');
+      lstStreams.Items.Add('   📂 International Sports [ID: sports]');
+      lblStatus.Caption := 'Mock TV: Use folders to explore categories.';
+    end
+    else
+    begin
+      if FActiveLiveCatId = 'news_science' then
+      begin
+        SetLength(FStreams, 3);
+        
+        FStreams[0].Name := 'go_back';
+        FStreams[0].StreamId := 'go_back';
+        FStreams[0].CategoryId := 'System';
+        FStreams[0].Icon := '';
+        FStreams[0].EpgChannelId := '';
+
+        FStreams[1].Name := 'NASA HD Live Space Stream';
+        FStreams[1].StreamId := 'nasa_hd';
+        FStreams[1].CategoryId := 'news_science';
+        FStreams[1].Icon := 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=400';
+        FStreams[1].EpgChannelId := 'NASA_TV';
+
+        FStreams[2].Name := 'DW English News Global 24/7';
+        FStreams[2].StreamId := 'dw_news';
+        FStreams[2].CategoryId := 'news_science';
+        FStreams[2].Icon := 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?q=80&w=400';
+        FStreams[2].EpgChannelId := 'DW_WORLD';
+
+        lstStreams.Items.Add('   ⬅️ [BACK TO LIVE CATEGORIES] [ID: go_back]');
+        lstStreams.Items.Add('+ GLOBAL NEWS & SCIENCE');
+        lstStreams.Items.Add('   🖼️ NASA HD Live Space Stream [ID: nasa_hd] (EPG: NASA_TV)');
+        lstStreams.Items.Add('   🖼️ DW English News Global 24/7 [ID: dw_news] (EPG: DW_WORLD)');
+      end
+      else
+      begin
+        SetLength(FStreams, 3);
+        
+        FStreams[0].Name := 'go_back';
+        FStreams[0].StreamId := 'go_back';
+        FStreams[0].CategoryId := 'System';
+        FStreams[0].Icon := '';
+        FStreams[0].EpgChannelId := '';
+
+        FStreams[1].Name := 'Red Bull TV Ultimate Extreme Sports';
+        FStreams[1].StreamId := 'redbull_tv';
+        FStreams[1].CategoryId := 'sports';
+        FStreams[1].Icon := 'https://images.unsplash.com/photo-1541252260730-0412e8e2108e?q=80&w=400';
+        FStreams[1].EpgChannelId := 'REDBULL_LIVE';
+
+        FStreams[2].Name := 'France 24 International Live Feed';
+        FStreams[2].StreamId := 'france24';
+        FStreams[2].CategoryId := 'sports';
+        FStreams[2].Icon := '';
+        FStreams[2].EpgChannelId := 'FRANCE24_EN';
+
+        lstStreams.Items.Add('   ⬅️ [BACK TO LIVE CATEGORIES] [ID: go_back]');
+        lstStreams.Items.Add('+ INTERNATIONAL SPORTS');
+        lstStreams.Items.Add('   🖼️ Red Bull TV Ultimate Extreme Sports [ID: redbull_tv] (EPG: REDBULL_LIVE)');
+        lstStreams.Items.Add('   📺 France 24 International Live Feed [ID: france24] (EPG: FRANCE24_EN)');
+      end;
+      lblStatus.Caption := 'Mock TV: Opened category folder ' + FActiveLiveCatId;
+    end;
+  end;
+  if FStreamMode = 'movie' then
   begin
+    SetLength(FStreams, 3);
+    
+    FStreams[0].Name := 'Sintel (Ultra HD Blender Film)';
+    FStreams[0].StreamId := 'sintel_movie';
+    FStreams[0].CategoryId := 'ADVANCED CINEMA';
+    FStreams[0].Icon := '';
+    FStreams[0].EpgChannelId := 'MOVIE_SINTEL';
+
+    FStreams[1].Name := 'Tears of Steel (VFX Sci-Fi Showcase)';
+    FStreams[1].StreamId := 'tears_steel';
+    FStreams[1].CategoryId := 'ADVANCED CINEMA';
+    FStreams[1].Icon := '';
+    FStreams[1].EpgChannelId := 'MOVIE_TEARS';
+
+    FStreams[2].Name := 'Big Buck Bunny HLS Classic';
+    FStreams[2].StreamId := 'bbb_classic';
+    FStreams[2].CategoryId := 'CLASSIC SELECTIONS';
+    FStreams[2].Icon := '';
+    FStreams[2].EpgChannelId := 'MOVIE_BBB';
+
     lstStreams.Items.Add('+ ADVANCED CINEMA');
     lstStreams.Items.Add('   🖼️ Sintel (Ultra HD Blender Film) [ID: sintel_movie] (EPG: MOVIE_SINTEL)');
     lstStreams.Items.Add('   🖼️ Tears of Steel (VFX Sci-Fi Showcase) [ID: tears_steel] (EPG: MOVIE_TEARS)');
     lstStreams.Items.Add('+ CLASSIC SELECTIONS');
     lstStreams.Items.Add('   📺 Big Buck Bunny HLS Classic [ID: bbb_classic] (EPG: MOVIE_BBB)');
-  end
-  else
+  end;
+  if FStreamMode = 'series' then
   begin
+    SetLength(FStreams, 2);
+    
+    FStreams[0].Name := 'Caminandes Animation Shorts';
+    FStreams[0].StreamId := 'caminandes_series';
+    FStreams[0].CategoryId := 'POPULAR TV SHOWS';
+    FStreams[0].Icon := '';
+    FStreams[0].EpgChannelId := '';
+
+    FStreams[1].Name := 'Cosmos: A Spacetime Odyssey';
+    FStreams[1].StreamId := 'cosmos_series';
+    FStreams[1].CategoryId := 'POPULAR TV SHOWS';
+    FStreams[1].Icon := '';
+    FStreams[1].EpgChannelId := '';
+
     lstStreams.Items.Add('+ POPULAR TV SHOWS');
     lstStreams.Items.Add('   📂 Caminandes Animation Shorts [ID: caminandes_series]');
     lstStreams.Items.Add('   📂 Cosmos: A Spacetime Odyssey [ID: cosmos_series]');
@@ -629,6 +812,7 @@ procedure TMainForm.btnModeLiveClick(Sender: TObject);
 begin
   FStreamMode := 'live';
   FInSeriesFolder := False;
+  FInLiveFolder := False;
   FetchServerStreams;
 end;
 
@@ -636,6 +820,7 @@ procedure TMainForm.btnModeMoviesClick(Sender: TObject);
 begin
   FStreamMode := 'movie';
   FInSeriesFolder := False;
+  FInLiveFolder := False;
   FetchServerStreams;
 end;
 
@@ -643,6 +828,7 @@ procedure TMainForm.btnModeSeriesClick(Sender: TObject);
 begin
   FStreamMode := 'series';
   FInSeriesFolder := False;
+  FInLiveFolder := False;
   FetchServerStreams;
 end;
 
@@ -734,6 +920,7 @@ begin
   if StreamId = 'go_back' then
   begin
     FInSeriesFolder := False;
+    FInLiveFolder := False;
     FetchServerStreams;
     Exit;
   end;
@@ -744,6 +931,14 @@ begin
     FActiveSeriesId := StreamId;
     FActiveSeriesName := SelectedText;
     FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
+  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  begin
+    FInLiveFolder := True;
+    FActiveLiveCatId := StreamId;
+    FetchServerStreams;
     Exit;
   end;
 
@@ -785,6 +980,7 @@ begin
   if StreamId = 'go_back' then
   begin
     FInSeriesFolder := False;
+    FInLiveFolder := False;
     FetchServerStreams;
     Exit;
   end;
@@ -795,6 +991,14 @@ begin
     FActiveSeriesId := StreamId;
     FActiveSeriesName := SelectedText;
     FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
+  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  begin
+    FInLiveFolder := True;
+    FActiveLiveCatId := StreamId;
+    FetchServerStreams;
     Exit;
   end;
 
@@ -823,6 +1027,7 @@ begin
   if StreamId = 'go_back' then
   begin
     FInSeriesFolder := False;
+    FInLiveFolder := False;
     FetchServerStreams;
     Exit;
   end;
@@ -833,6 +1038,14 @@ begin
     FActiveSeriesId := StreamId;
     FActiveSeriesName := SelectedText;
     FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
+  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  begin
+    FInLiveFolder := True;
+    FActiveLiveCatId := StreamId;
+    FetchServerStreams;
     Exit;
   end;
 
@@ -895,6 +1108,7 @@ begin
   if StreamId = 'go_back' then
   begin
     FInSeriesFolder := False;
+    FInLiveFolder := False;
     FetchServerStreams;
     Exit;
   end;
@@ -905,6 +1119,14 @@ begin
     FActiveSeriesId := StreamId;
     FActiveSeriesName := SelectedText;
     FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
+  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  begin
+    FInLiveFolder := True;
+    FActiveLiveCatId := StreamId;
+    FetchServerStreams;
     Exit;
   end;
 
@@ -1193,6 +1415,151 @@ begin
     lblStatus.Caption := 'Successfully parsed ' + IntToStr(Count - 1) + ' episodes grouped by season!';
   finally
     lstStreams.Items.EndUpdate;
+  end;
+end;
+
+procedure TMainForm.lstStreamsClick(Sender: TObject);
+var
+  SelectedText, StreamId: string;
+begin
+  if lstStreams.ItemIndex >= 0 then
+  begin
+    SelectedText := lstStreams.Items[lstStreams.ItemIndex];
+    StreamId := ExtractStreamId(SelectedText);
+    if StreamId <> '' then
+      UpdatePlayingItem(StreamId);
+  end;
+end;
+
+procedure TMainForm.DrawPlaceholderLogo(const ChannelName: string);
+var
+  C: TCanvas;
+  R: TRect;
+  FirstLetter: string;
+  HashVal, I: Integer;
+  BgColor: TColor;
+begin
+  C := imgNowPlaying.Canvas;
+  C.Lock;
+  try
+    // Calculate a nice, deterministic background color based on channel name
+    HashVal := 0;
+    for I := 1 to Length(ChannelName) do
+      HashVal := HashVal + Ord(ChannelName[I]);
+
+    case (HashVal mod 6) of
+      0: BgColor := $004B2F1D; // Deep Blue/slate
+      1: BgColor := $001C3F24; // Deep Forest Green
+      2: BgColor := $001B1E4B; // Ruby Crimson
+      3: BgColor := $004A154B; // Purple
+      4: BgColor := $005B3A1A; // Rich Teal
+      else BgColor := $002D2D2D; // Dark grey
+    end;
+
+    C.Brush.Color := BgColor;
+    C.Brush.Style := bsSolid;
+    C.Pen.Color := clSilver;
+    C.Pen.Width := 2;
+    C.Rectangle(0, 0, imgNowPlaying.Width, imgNowPlaying.Height);
+
+    // Cute inner border outline
+    C.Pen.Color := TColor($003C2016);
+    C.Rectangle(4, 4, imgNowPlaying.Width - 4, imgNowPlaying.Height - 4);
+
+    C.Font.Name := 'Segoe UI';
+    C.Font.Color := clWhite;
+    C.Font.Style := [fsBold];
+
+    if (Length(ChannelName) > 0) and (ChannelName <> '-') then
+      FirstLetter := UpperCase(Copy(ChannelName, 1, 1))
+    else
+      FirstLetter := '📺';
+
+    C.Font.Size := 36;
+    R := Rect(0, 10, imgNowPlaying.Width, imgNowPlaying.Height - 40);
+    DrawText(C.Handle, PChar(FirstLetter), Length(FirstLetter), R, DT_CENTER or DT_VCENTER or DT_SINGLELINE);
+
+    C.Font.Size := 9;
+    C.Font.Style := [];
+    C.Font.Color := clSilver;
+    R := Rect(10, imgNowPlaying.Height - 35, imgNowPlaying.Width - 10, imgNowPlaying.Height - 5);
+    DrawText(C.Handle, PChar(ChannelName), Length(ChannelName), R, DT_CENTER or DT_BOTTOM or DT_SINGLELINE or DT_END_ELLIPSIS);
+  finally
+    C.Unlock;
+  end;
+  imgNowPlaying.Invalidate;
+end;
+
+procedure TMainForm.UpdatePlayingItem(const StreamId: string);
+var
+  I: Integer;
+  Matched: TStreamItem;
+  Found: Boolean;
+  TempFile, IconUrl: string;
+  FS: TFileStream;
+  JP: TJPEGImage;
+begin
+  Found := False;
+  if (StreamId <> '') and (StreamId <> 'go_back') then
+  begin
+    for I := 0 to Length(FStreams) - 1 do
+    begin
+      if FStreams[I].StreamId = StreamId then
+      begin
+        Matched := FStreams[I];
+        Found := True;
+        Break;
+      end;
+    end;
+  end;
+
+  if not Found then
+  begin
+    lblNowTitle.Caption := '📺 SELECT A CHANNEL';
+    lblNowDetails.Caption := 'Category: -';
+    lblNowSubDetails.Caption := 'ID: -';
+    DrawPlaceholderLogo('-');
+    Exit;
+  end;
+
+  lblNowTitle.Caption := '🎬 ' + Matched.Name;
+  lblNowDetails.Caption := 'Category: ' + Matched.CategoryId;
+  lblNowSubDetails.Caption := 'ID: ' + Matched.StreamId;
+
+  IconUrl := Matched.Icon;
+  if (IconUrl <> '') and (Pos('http', IconUrl) = 1) then
+  begin
+    try
+      TempFile := ExtractFilePath(Application.ExeName) + 'stream_temp_logo.jpg';
+      if FileExists(TempFile) then
+        DeleteFile(TempFile);
+
+      FS := TFileStream.Create(TempFile, fmCreate);
+      try
+        HTTPClient.Get(IconUrl, FS);
+      finally
+        FS.Free;
+      end;
+
+      if FileExists(TempFile) then
+      begin
+        JP := TJPEGImage.Create;
+        try
+          JP.LoadFromFile(TempFile);
+          imgNowPlaying.Picture.Assign(JP);
+        finally
+          JP.Free;
+        end;
+      end
+      else
+        DrawPlaceholderLogo(Matched.Name);
+    except
+      DrawPlaceholderLogo(Matched.Name);
+    end;
+  end
+  else
+  begin
+    DrawPlaceholderLogo(Matched.Name);
   end;
 end;
 

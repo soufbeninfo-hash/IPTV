@@ -254,6 +254,69 @@ object MainForm: TMainForm
       TabOrder = 3
       OnChange = cmbFontsChange
     end
+    object grpNowPlaying: TGroupBox
+      Left = 8
+      Top = 236
+      Width = 264
+      Height = 250
+      Caption = ' Now Playing Stream'
+      Color = $00170B07
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clWhite
+      Font.Height = -11
+      Font.Name = 'Segoe UI'
+      Font.Style = [fsBold]
+      ParentColor = False
+      ParentFont = False
+      TabOrder = 4
+      object lblNowTitle: TLabel
+        Left = 10
+        Top = 20
+        Width = 244
+        Height = 18
+        Caption = '📺 SELECT A CHANNEL'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clSkyBlue
+        Font.Height = -12
+        Font.Name = 'Segoe UI'
+        Font.Style = [fsBold]
+        ParentFont = False
+      end
+      object lblNowDetails: TLabel
+        Left = 10
+        Top = 192
+        Width = 244
+        Height = 15
+        Caption = 'Category: -'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clSilver
+        Font.Height = -11
+        Font.Name = 'Segoe UI'
+        Font.Style = []
+        ParentFont = False
+      end
+      object lblNowSubDetails: TLabel
+        Left = 10
+        Top = 210
+        Width = 244
+        Height = 15
+        Caption = 'ID: -'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clSilver
+        Font.Height = -11
+        Font.Name = 'Segoe UI'
+        Font.Style = []
+        ParentFont = False
+      end
+      object imgNowPlaying: TImage
+        Left = 10
+        Top = 44
+        Width = 244
+        Height = 140
+        Center = True
+        Stretch = True
+      end
+    end
   end
   object pnlMain: TPanel
     Left = 280
@@ -397,6 +460,7 @@ object MainForm: TMainForm
       ItemHeight = 15
       ParentFont = False
       TabOrder = 2
+      OnClick = lstStreamsClick
       OnDblClick = lstStreamsDblClick
     end
     object pnlLaunchHub: TPanel
