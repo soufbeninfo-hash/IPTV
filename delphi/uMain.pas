@@ -81,6 +81,7 @@ type
     procedure WriteProfilesToIni(Ini: TIniFile);
     procedure ConnectToActiveServer;
     procedure FetchServerStreams;
+    function GetJsonValue(const ObjStr, Key: string): string;
     procedure ParseAndPopulateStreams(const JsonData: string);
     function ExtractStreamId(const ListText: string): string;
     procedure PopulateMockStreams;
@@ -338,10 +339,70 @@ begin
   end;
 end;
 
+function TMainForm.GetJsonValue(const ObjStr, Key: string): string;
+var
+  KeyPos, ColonPos, ValStart, ValEnd: Integer;
+  QuoteChar: Char;
+  LObj, LKey: string;
+begin
+  Result := '';
+  LObj := LowerCase(ObjStr);
+  LKey := '"' + LowerCase(Key) + '"';
+  
+  // Try locating Key with double quotes
+  KeyPos := Pos(LKey, LObj);
+  if KeyPos = 0 then
+  begin
+    // Try single quotes
+    LKey := '''' + LowerCase(Key) + '''';
+    KeyPos := Pos(LKey, LObj);
+  end;
+  
+  if KeyPos = 0 then Exit;
+  
+  // Find colon after Key
+  ColonPos := PosEx(':', ObjStr, KeyPos + Length(LKey));
+  if ColonPos = 0 then Exit;
+  
+  // Find start of value (skip spaces, tabs, quotes)
+  ValStart := ColonPos + 1;
+  while (ValStart <= Length(ObjStr)) and (ObjStr[ValStart] in [' ', #9, '"', '''']) do
+    Inc(ValStart);
+    
+  if ValStart > Length(ObjStr) then Exit;
+  
+  // Verify if it is a quoted string or unquoted scalar
+  QuoteChar := #0;
+  if (ValStart > 1) and (ObjStr[ValStart - 1] in ['"', '''']) then
+    QuoteChar := ObjStr[ValStart - 1];
+    
+  ValEnd := ValStart;
+  if QuoteChar <> #0 then
+  begin
+    while (ValEnd <= Length(ObjStr)) and (ObjStr[ValEnd] <> QuoteChar) do
+    begin
+      if (ObjStr[ValEnd] = '\') and (ValEnd < Length(ObjStr)) and (ObjStr[ValEnd + 1] = QuoteChar) then
+        Inc(ValEnd, 2)
+      else
+        Inc(ValEnd);
+    end;
+    Result := Copy(ObjStr, ValStart, ValEnd - ValStart);
+  end
+  else
+  begin
+    while (ValEnd <= Length(ObjStr)) and not (ObjStr[ValEnd] in [',', '}', ']', ' ', #9, #13, #10]) do
+      Inc(ValEnd);
+    Result := Copy(ObjStr, ValStart, ValEnd - ValStart);
+  end;
+  
+  Result := StringReplace(Result, '\"', '"', [rfReplaceAll]);
+  Result := StringReplace(Result, '\/', '/', [rfReplaceAll]);
+end;
+
 procedure TMainForm.ParseAndPopulateStreams(const JsonData: string);
 var
-  P, PName, PId, PEnd: Integer;
-  SName, SId: string;
+  P, PStart, PEnd: Integer;
+  ObjStr, SName, SId: string;
 begin
   lstStreams.Items.BeginUpdate;
   try
@@ -349,49 +410,29 @@ begin
     P := 1;
     while True do
     begin
-      // Look for `"name":"` or `"title":"`
-      PName := PosEx('"name":"', JsonData, P);
-      if PName = 0 then
-        PName := PosEx('"title":"', JsonData, P); // Series sometimes use title
-
-      if PName = 0 then Break;
-
-      // Extract Name
-      PName := PName + 8; // length of '"name":"'
-      PEnd := PosEx('"', JsonData, PName);
+      PStart := PosEx('{', JsonData, P);
+      if PStart = 0 then Break;
+      
+      PEnd := PosEx('}', JsonData, PStart);
       if PEnd = 0 then Break;
-      SName := Copy(JsonData, PName, PEnd - PName);
-
-      // Look for `"stream_id":`
-      PId := PosEx('"stream_id":', JsonData, PEnd);
-      if PId = 0 then
-        PId := PosEx('"series_id":', JsonData, PEnd); // Series uses series_id
-
-      SId := '';
-      if PId > 0 then
+      
+      ObjStr := Copy(JsonData, PStart, PEnd - PStart + 1);
+      
+      SName := GetJsonValue(ObjStr, 'name');
+      if SName = '' then
+        SName := GetJsonValue(ObjStr, 'title');
+        
+      SId := GetJsonValue(ObjStr, 'stream_id');
+      if SId = '' then
+        SId := GetJsonValue(ObjStr, 'series_id');
+        
+      if SName <> '' then
       begin
-        PId := PId + 12; // length of '"stream_id":' or '"series_id":'
-        if JsonData[PId] = '"' then
-        begin
-          Inc(PId);
-          PEnd := PosEx('"', JsonData, PId);
-          if PEnd > 0 then
-            SId := Copy(JsonData, PId, PEnd - PId);
-        end
-        else
-        begin
-          PEnd := PId;
-          while (PEnd <= Length(JsonData)) and (JsonData[PEnd] in ['0'..'9']) do
-            Inc(PEnd);
-          SId := Copy(JsonData, PId, PEnd - PId);
-        end;
+        if SId = '' then SId := '0';
+        lstStreams.Items.Add(SName + ' [ID: ' + SId + ']');
       end;
-
-      if SId = '' then SId := '0';
-
-      // Insert clean entry to listbox
-      lstStreams.Items.Add(SName + ' [ID: ' + SId + ']');
-      P := PEnd;
+      
+      P := PEnd + 1;
     end;
 
     if lstStreams.Count = 0 then
