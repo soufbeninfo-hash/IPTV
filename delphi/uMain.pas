@@ -90,6 +90,9 @@ type
     FStreams: array of TStreamItem;
     FActiveProfileIndex: Integer;
     FStreamMode: string; // 'live', 'movie', 'series'
+    FInSeriesFolder: Boolean;
+    FActiveSeriesId: string;
+    FActiveSeriesName: string;
     procedure LoadPreferences;
     procedure SavePreferences;
     procedure ReadProfilesFromIni(Ini: TIniFile);
@@ -101,6 +104,8 @@ type
     function ExtractStreamId(const ListText: string): string;
     procedure PopulateMockStreams;
     function BuildStreamUrl(StreamId, StreamExt: string): string;
+    procedure FetchSeriesEpisodes(const SeriesId: string);
+    procedure ParseAndPopulateEpisodes(const JsonData: string);
   public
     { Public declarations }
   end;
@@ -117,6 +122,7 @@ begin
   Self.WindowState := wsMaximized;
   FActiveProfileIndex := -1;
   FStreamMode := 'live';
+  FInSeriesFolder := False;
   
   // Populate configuration font options for Windows 11
   cmbFonts.Items.Clear;
@@ -537,7 +543,9 @@ begin
         if FStreams[J].CategoryId = UniqueCats[I] then
         begin
           ItemText := '   ';
-          if FStreams[J].Icon <> '' then
+          if FStreamMode = 'series' then
+            ItemText := ItemText + '📂 '
+          else if FStreams[J].Icon <> '' then
             ItemText := ItemText + '🖼️ '
           else
             ItemText := ItemText + '📺 ';
@@ -611,26 +619,30 @@ begin
   end
   else
   begin
-    lstStreams.Items.Add('+ ANIMATION SHORTS');
-    lstStreams.Items.Add('   📺 Caminandes Animation Shorts episode_1 [ID: caminandes_series] (EPG: SHORTS_CAMINANDES)');
+    lstStreams.Items.Add('+ POPULAR TV SHOWS');
+    lstStreams.Items.Add('   📂 Caminandes Animation Shorts [ID: caminandes_series]');
+    lstStreams.Items.Add('   📂 Cosmos: A Spacetime Odyssey [ID: cosmos_series]');
   end;
 end;
 
 procedure TMainForm.btnModeLiveClick(Sender: TObject);
 begin
   FStreamMode := 'live';
+  FInSeriesFolder := False;
   FetchServerStreams;
 end;
 
 procedure TMainForm.btnModeMoviesClick(Sender: TObject);
 begin
   FStreamMode := 'movie';
+  FInSeriesFolder := False;
   FetchServerStreams;
 end;
 
 procedure TMainForm.btnModeSeriesClick(Sender: TObject);
 begin
   FStreamMode := 'series';
+  FInSeriesFolder := False;
   FetchServerStreams;
 end;
 
@@ -718,6 +730,23 @@ begin
     ShowMessage('Please select a valid stream, not a category header with "+".');
     Exit;
   end;
+
+  if StreamId = 'go_back' then
+  begin
+    FInSeriesFolder := False;
+    FetchServerStreams;
+    Exit;
+  end;
+
+  if (FStreamMode = 'series') and (not FInSeriesFolder) then
+  begin
+    FInSeriesFolder := True;
+    FActiveSeriesId := StreamId;
+    FActiveSeriesName := SelectedText;
+    FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
 
   // Write temporary windows .m3u file & launch standard player association
@@ -752,6 +781,23 @@ begin
     ShowMessage('Please select a valid stream, not a category header with "+".');
     Exit;
   end;
+
+  if StreamId = 'go_back' then
+  begin
+    FInSeriesFolder := False;
+    FetchServerStreams;
+    Exit;
+  end;
+
+  if (FStreamMode = 'series') and (not FInSeriesFolder) then
+  begin
+    FInSeriesFolder := True;
+    FActiveSeriesId := StreamId;
+    FActiveSeriesName := SelectedText;
+    FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
   // Attempt to invoke protocol launcher straight in VLC
   ShellExecute(Handle, 'open', PChar('vlc://' + SrvUrl), nil, nil, SW_SHOWNORMAL);
@@ -773,6 +819,23 @@ begin
     ShowMessage('Please select a valid stream, not a category header with "+".');
     Exit;
   end;
+
+  if StreamId = 'go_back' then
+  begin
+    FInSeriesFolder := False;
+    FetchServerStreams;
+    Exit;
+  end;
+
+  if (FStreamMode = 'series') and (not FInSeriesFolder) then
+  begin
+    FInSeriesFolder := True;
+    FActiveSeriesId := StreamId;
+    FActiveSeriesName := SelectedText;
+    FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
   ShellExecute(Handle, 'open', PChar('potplayer://' + SrvUrl), nil, nil, SW_SHOWNORMAL);
 end;
@@ -828,6 +891,23 @@ begin
     ShowMessage('Please select a valid stream, not a category header with "+".');
     Exit;
   end;
+
+  if StreamId = 'go_back' then
+  begin
+    FInSeriesFolder := False;
+    FetchServerStreams;
+    Exit;
+  end;
+
+  if (FStreamMode = 'series') and (not FInSeriesFolder) then
+  begin
+    FInSeriesFolder := True;
+    FActiveSeriesId := StreamId;
+    FActiveSeriesName := SelectedText;
+    FetchSeriesEpisodes(StreamId);
+    Exit;
+  end;
+
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
   Clipboard.AsText := SrvUrl;
   ShowMessage('Stream link copied to clipboard successfully!' + #13#10 + SrvUrl);
@@ -864,6 +944,256 @@ end;
 procedure TMainForm.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
   SavePreferences;
+end;
+
+procedure TMainForm.FetchSeriesEpisodes(const SeriesId: string);
+var
+  Srv: TServerProfile;
+  ApiUrl, ResJSON: string;
+begin
+  if (FActiveProfileIndex < 0) or (FActiveProfileIndex >= Length(FProfiles)) then
+  begin
+    // Populate mock episodes based on SeriesId
+    lstStreams.Items.BeginUpdate;
+    try
+      lstStreams.Items.Clear;
+      SetLength(FStreams, 4);
+
+      // Back navigation virtual stream item
+      FStreams[0].Name := 'go_back';
+      FStreams[0].StreamId := 'go_back';
+      FStreams[0].CategoryId := 'System';
+      FStreams[0].Icon := '';
+      FStreams[0].EpgChannelId := '';
+
+      lstStreams.Items.Add('   ⬅️ [BACK TO SERIES CATALOG] [ID: go_back]');
+      
+      if SeriesId = 'cosmos_series' then
+      begin
+        FStreams[1].Name := 'Standing Up in the Milky Way';
+        FStreams[1].StreamId := 'cosmos_1';
+        FStreams[1].CategoryId := 'Season 1';
+        FStreams[1].Icon := '';
+        FStreams[1].EpgChannelId := 'mp4';
+
+        FStreams[2].Name := 'Some of the Things That Molecules Do';
+        FStreams[2].StreamId := 'cosmos_2';
+        FStreams[2].CategoryId := 'Season 1';
+        FStreams[2].Icon := '';
+        FStreams[2].EpgChannelId := 'mp4';
+
+        FStreams[3].Name := 'When Knowledge Conquered Fear';
+        FStreams[3].StreamId := 'cosmos_3';
+        FStreams[3].CategoryId := 'Season 1';
+        FStreams[3].Icon := '';
+        FStreams[3].EpgChannelId := 'mp4';
+
+        lstStreams.Items.Add('+ SEASON 1');
+        lstStreams.Items.Add('   🎬 S1E01 - Standing Up in the Milky Way [ID: cosmos_1] (MP4)');
+        lstStreams.Items.Add('   🎬 S1E02 - Some of the Things That Molecules Do [ID: cosmos_2] (MP4)');
+        lstStreams.Items.Add('   🎬 S1E03 - When Knowledge Conquered Fear [ID: cosmos_3] (MP4)');
+      end
+      else
+      begin
+        FStreams[1].Name := 'Caminandes Llama Drama';
+        FStreams[1].StreamId := 'camin_1';
+        FStreams[1].CategoryId := 'Season 1';
+        FStreams[1].Icon := '';
+        FStreams[1].EpgChannelId := 'mp4';
+
+        FStreams[2].Name := 'Caminandes Gran Dillama';
+        FStreams[2].StreamId := 'camin_2';
+        FStreams[2].CategoryId := 'Season 1';
+        FStreams[2].Icon := '';
+        FStreams[2].EpgChannelId := 'mp4';
+
+        FStreams[3].Name := 'Caminandes Divertimento';
+        FStreams[3].StreamId := 'camin_3';
+        FStreams[3].CategoryId := 'Season 1';
+        FStreams[3].Icon := '';
+        FStreams[3].EpgChannelId := 'mp4';
+
+        lstStreams.Items.Add('+ SEASON 1');
+        lstStreams.Items.Add('   🎬 S1E01 - Caminandes Llama Drama [ID: camin_1] (MP4)');
+        lstStreams.Items.Add('   🎬 S1E02 - Caminandes Gran Dillama [ID: camin_2] (MP4)');
+        lstStreams.Items.Add('   🎬 S1E03 - Caminandes Divertimento [ID: camin_3] (MP4)');
+      end;
+      
+      lblStatus.Caption := 'Displaying series folder info: mock episodes populated';
+    finally
+      lstStreams.Items.EndUpdate;
+    end;
+    Exit;
+  end;
+
+  Srv := FProfiles[FActiveProfileIndex];
+  lblStatus.Caption := 'Loading episodes for series ID ' + SeriesId + '...';
+  Application.ProcessMessages;
+  
+  try
+    ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_series_info&series_id=' + SeriesId;
+    ResJSON := HTTPClient.Get(ApiUrl);
+    ParseAndPopulateEpisodes(ResJSON);
+  except
+    on E: Exception do
+    begin
+      lstStreams.Items.BeginUpdate;
+      try
+        lstStreams.Items.Clear;
+        SetLength(FStreams, 3);
+        
+        FStreams[0].Name := 'go_back';
+        FStreams[0].StreamId := 'go_back';
+        FStreams[0].CategoryId := 'System';
+        
+        FStreams[1].Name := 'Episode 1 Fallback';
+        FStreams[1].StreamId := 'ep_fallback_1';
+        FStreams[1].CategoryId := 'Season 1';
+        
+        FStreams[2].Name := 'Episode 2 Fallback';
+        FStreams[2].StreamId := 'ep_fallback_2';
+        FStreams[2].CategoryId := 'Season 1';
+
+        lstStreams.Items.Add('   ⬅️ [BACK TO SERIES CATALOG] [ID: go_back]');
+        lstStreams.Items.Add('+ SEASON 1');
+        lstStreams.Items.Add('   🎬 S1E01 - Episode 1 Fallback [ID: ep_fallback_1] (MP4)');
+        lstStreams.Items.Add('   🎬 S1E02 - Episode 2 Fallback [ID: ep_fallback_2] (MP4)');
+        lblStatus.Caption := 'Fallback mode activated to represent episodes catalog.';
+      finally
+        lstStreams.Items.EndUpdate;
+      end;
+    end;
+  end;
+end;
+
+procedure TMainForm.ParseAndPopulateEpisodes(const JsonData: string);
+var
+  P, PStart, PEnd, Count, I, J: Integer;
+  ObjStr, STitle, SId, SNum, SExt, SSeason, ItemText: string;
+  UniqueCats: array of string;
+  CatCount: Integer;
+  Exists: Boolean;
+begin
+  lstStreams.Items.BeginUpdate;
+  try
+    lstStreams.Items.Clear;
+    SetLength(FStreams, 1);
+    
+    // Add Back Stream Item
+    FStreams[0].Name := 'go_back';
+    FStreams[0].StreamId := 'go_back';
+    FStreams[0].CategoryId := 'System';
+    FStreams[0].Icon := '';
+    FStreams[0].EpgChannelId := '';
+    
+    lstStreams.Items.Add('   ⬅️ [BACK TO SERIES CATALOG] [ID: go_back]');
+    
+    P := Pos('"episodes"', JsonData);
+    if P = 0 then P := 1;
+    
+    Count := 1; // start from 1 since go_back is item index 0
+    while True do
+    begin
+      PStart := PosEx('{', JsonData, P);
+      if PStart = 0 then Break;
+      
+      PEnd := PosEx('}', JsonData, PStart);
+      if PEnd = 0 then Break;
+      
+      ObjStr := Copy(JsonData, PStart, PEnd - PStart + 1);
+      
+      SId := GetJsonValue(ObjStr, 'id');
+      if SId = '' then SId := GetJsonValue(ObjStr, 'stream_id');
+      
+      SNum := GetJsonValue(ObjStr, 'episode_num');
+      STitle := GetJsonValue(ObjStr, 'title');
+      
+      SExt := GetJsonValue(ObjStr, 'container_extension');
+      if SExt = '' then SExt := 'mp4';
+      
+      SSeason := GetJsonValue(ObjStr, 'season');
+      if SSeason = '' then SSeason := '1';
+      
+      SSeason := StringReplace(SSeason, '"', '', [rfReplaceAll]);
+      SSeason := StringReplace(SSeason, '''', '', [rfReplaceAll]);
+      SSeason := Trim(SSeason);
+      
+      if (SId <> '') and (SNum <> '') then
+      begin
+        STitle := StringReplace(STitle, '"', '', [rfReplaceAll]);
+        STitle := StringReplace(STitle, '''', '', [rfReplaceAll]);
+        STitle := Trim(STitle);
+        if STitle = '' then STitle := 'Episode ' + SNum;
+        
+        SetLength(FStreams, Count + 1);
+        FStreams[Count].Name := 'S' + SSeason + 'E' + SNum + ' - ' + STitle;
+        FStreams[Count].StreamId := SId;
+        FStreams[Count].CategoryId := 'Season ' + SSeason;
+        FStreams[Count].Icon := '';
+        FStreams[Count].EpgChannelId := SExt;
+        Inc(Count);
+      end;
+      
+      P := PEnd + 1;
+    end;
+
+    if Count = 1 then
+    begin
+      // Fallback
+      SetLength(FStreams, 2);
+      FStreams[1].Name := 'Fallback Series Ep 1';
+      FStreams[1].StreamId := 'mock_fallback_ep';
+      FStreams[1].CategoryId := 'Season 1';
+      
+      lstStreams.Items.Add('+ SEASON 1');
+      lstStreams.Items.Add('   🎬 S1E01 - Fallback Ep 1 [ID: mock_fallback_ep] (MP4)');
+      lblStatus.Caption := 'No active episodes parsed. Showing fallback.';
+      Exit;
+    end;
+
+    // Collect Unique Seasons / Categories starting from index 1 (skip go_back)
+    SetLength(UniqueCats, 0);
+    CatCount := 0;
+    for I := 1 to Count - 1 do
+    begin
+      Exists := False;
+      for J := 0 to CatCount - 1 do
+      begin
+        if UniqueCats[J] = FStreams[I].CategoryId then
+        begin
+          Exists := True;
+          Break;
+        end;
+      end;
+      if not Exists then
+      begin
+        SetLength(UniqueCats, CatCount + 1);
+        UniqueCats[CatCount] := FStreams[I].CategoryId;
+        Inc(CatCount);
+      end;
+    end;
+
+    // Populate Seasons!
+    for I := 0 to CatCount - 1 do
+    begin
+      lstStreams.Items.Add('+ ' + UpperCase(UniqueCats[I]));
+      
+      for J := 1 to Count - 1 do
+      begin
+        if FStreams[J].CategoryId = UniqueCats[I] then
+        begin
+          ItemText := '   🎬 ' + FStreams[J].Name + ' [ID: ' + FStreams[J].StreamId + ']';
+          if FStreams[J].EpgChannelId <> '' then
+             ItemText := ItemText + ' (' + UpperCase(FStreams[J].EpgChannelId) + ')';
+          lstStreams.Items.Add(ItemText);
+        end;
+      end;
+    end;
+
+    lblStatus.Caption := 'Successfully parsed ' + IntToStr(Count - 1) + ' episodes grouped by season!';
+  finally
+    lstStreams.Items.EndUpdate;
+  end;
 end;
 
 end.
