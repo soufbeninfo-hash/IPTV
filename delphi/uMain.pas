@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP, StrUtils, Clipbrd, jpeg, IdSSLOpenSSL;
+  Dialogs, StdCtrls, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP, StrUtils, Clipbrd, jpeg, WinInet;
 
 type
   TServerProfile = record
@@ -118,6 +118,7 @@ type
     procedure ParseAndPopulateEpisodes(const JsonData: string);
     procedure DrawPlaceholderLogo(const ChannelName: string);
     procedure UpdatePlayingItem(const StreamId: string);
+    function DownloadUrlSchannel(const Url, DestFile: string): Boolean;
   public
     { Public declarations }
   end;
@@ -1536,14 +1537,7 @@ begin
       if FileExists(TempFile) then
         DeleteFile(TempFile);
 
-      FS := TFileStream.Create(TempFile, fmCreate);
-      try
-        HTTPClient.Get(IconUrl, FS);
-      finally
-        FS.Free;
-      end;
-
-      if FileExists(TempFile) then
+      if DownloadUrlSchannel(IconUrl, TempFile) and FileExists(TempFile) then
       begin
         JP := TJPEGImage.Create;
         try
@@ -1552,6 +1546,8 @@ begin
         finally
           JP.Free;
         end;
+        if FileExists(TempFile) then
+          DeleteFile(TempFile);
       end
       else
         DrawPlaceholderLogo(Matched.Name);
@@ -1568,10 +1564,7 @@ end;
 procedure TMainForm.btnLoadImgUrlClick(Sender: TObject);
 var
   UrlStr: string;
-  TempHttp: TIdHTTP;
-  SSLHandler: TIdSSLIOHandlerSocketOpenSSL;
   TempFile: string;
-  FS: TFileStream;
   JP: TJPEGImage;
 begin
   UrlStr := 'https://images.unsplash.com/photo-1579202673506-ca3ce28943ef?q=80&w=400';
@@ -1582,77 +1575,92 @@ begin
   if UrlStr = '' then
     Exit;
 
-  lblStatus.Caption := 'Status: Fetching custom image over HTTPS SSL/TLS...';
+  lblStatus.Caption := 'Status: Fetching custom image over HTTPS (Schannel TLS)...';
   Application.ProcessMessages;
 
-  TempHttp := TIdHTTP.Create(nil);
-  SSLHandler := TIdSSLIOHandlerSocketOpenSSL.Create(nil);
+  TempFile := ExtractFilePath(Application.ExeName) + 'custom_url_image.jpg';
+  if FileExists(TempFile) then
+    DeleteFile(TempFile);
+
   try
-    TempHttp.ReadTimeout := 5000;
-    TempHttp.ConnectTimeout := 5000;
-    TempHttp.AllowCookies := True;
-
-    // Use secure modern TLS v1.2 specification
-    SSLHandler.SSLOptions.Method := sslvTLSv1_2;
-    SSLHandler.SSLOptions.Mode := sslmClient;
-    SSLHandler.SSLOptions.VerifyMode := [];
-    SSLHandler.SSLOptions.VerifyDepth := 0;
-
-    TempHttp.IOHandler := SSLHandler;
-
-    TempFile := ExtractFilePath(Application.ExeName) + 'custom_url_image.jpg';
-    if FileExists(TempFile) then
-      DeleteFile(TempFile);
-
-    FS := TFileStream.Create(TempFile, fmCreate);
-    try
-      try
-        TempHttp.Get(UrlStr, FS);
-      except
-        on E: Exception do
-        begin
-          FS.Free;
-          FS := nil;
-          if FileExists(TempFile) then
-            DeleteFile(TempFile);
-          ShowMessage('HTTPS Connection / SSL Handshake Failed: ' + E.Message + sLineBreak + 
-                      'Please ensure OpenSSL DLLs (ssleay32.dll & libeay32.dll) are placed in the app directory.');
-          lblStatus.Caption := 'Status: HTTPS SSL load failed.';
-          Exit;
-        end;
-      end;
-    finally
-      if Assigned(FS) then
-        FS.Free;
-    end;
-
-    if FileExists(TempFile) then
+    if DownloadUrlSchannel(UrlStr, TempFile) then
     begin
-      JP := TJPEGImage.Create;
-      try
-        try
-          JP.LoadFromFile(TempFile);
-          imgNowPlaying.Picture.Assign(JP);
-          lblNowTitle.Caption := '🌐 CUSTOM IMAGE';
-          lblNowDetails.Caption := 'Source: HTTPS URL';
-          lblNowSubDetails.Caption := Copy(UrlStr, 1, 40) + '...';
-          lblStatus.Caption := 'Status: SSL/TLS Image retrieved successfully.';
-        except
-          on E: Exception do
-          begin
-            ShowMessage('Error displaying JPEG image: ' + E.Message + sLineBreak + 'Ensure the URL is a valid JPEG format.');
-            lblStatus.Caption := 'Status: Invalid JPEG error.';
-          end;
-        end;
-      finally
-        JP.Free;
-      end;
       if FileExists(TempFile) then
-        DeleteFile(TempFile);
+      begin
+        JP := TJPEGImage.Create;
+        try
+          try
+            JP.LoadFromFile(TempFile);
+            imgNowPlaying.Picture.Assign(JP);
+            lblNowTitle.Caption := '🌐 CUSTOM IMAGE';
+            lblNowDetails.Caption := 'Source: HTTPS URL';
+            lblNowSubDetails.Caption := Copy(UrlStr, 1, 40) + '...';
+            lblStatus.Caption := 'Status: Native Schannel Image retrieved successfully.';
+          except
+            on E: Exception do
+            begin
+              ShowMessage('Error displaying JPEG image: ' + E.Message + sLineBreak + 'Ensure the URL is a valid JPEG format.');
+              lblStatus.Caption := 'Status: Invalid JPEG error.';
+            end;
+          end;
+        finally
+          JP.Free;
+        end;
+        if FileExists(TempFile) then
+          DeleteFile(TempFile);
+      end
+      else
+      begin
+        ShowMessage('Schannel Download succeeded, but could not produce file.');
+        lblStatus.Caption := 'Status: Empty target file.';
+      end;
+    end
+    else
+    begin
+      ShowMessage('Schannel (Secure Channel) connection/handshake failed.' + sLineBreak + 
+                  'Please specify a valid TLS-compliant HTTPS image URL (like Unsplash).');
+      lblStatus.Caption := 'Status: Secure connection failed.';
     end;
-  finally
-    TempHttp.Free;
-    SSLHandler.Free;
+  except
+    on E: Exception do
+    begin
+      ShowMessage('Schannel Error: ' + E.Message);
+      lblStatus.Caption := 'Status: Connection error.';
+    end;
+  end;
+end;
+
+function TMainForm.DownloadUrlSchannel(const Url, DestFile: string): Boolean;
+var
+  hSession, hConnect: HINTERNET;
+  Buffer: array[0..8191] of Byte;
+  BytesRead: DWORD;
+  FS: TFileStream;
+begin
+  Result := False;
+  hSession := InternetOpen('DelphiSchannelAgent', INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
+  if Assigned(hSession) then
+  begin
+    hConnect := InternetOpenUrl(hSession, PChar(Url), nil, 0, INTERNET_FLAG_SECURE or INTERNET_FLAG_RELOAD, 0);
+    if Assigned(hConnect) then
+    begin
+      try
+        FS := TFileStream.Create(DestFile, fmCreate);
+        try
+          while InternetReadFile(hConnect, @Buffer, SizeOf(Buffer), BytesRead) and (BytesRead > 0) do
+          begin
+            FS.WriteBuffer(Buffer, BytesRead);
+          end;
+          Result := True;
+        finally
+          FS.Free;
+        end;
+      except
+        Result := False;
+      end;
+      InternetCloseHandle(hConnect);
+    end;
+    InternetCloseHandle(hSession);
   end;
 end;
 
