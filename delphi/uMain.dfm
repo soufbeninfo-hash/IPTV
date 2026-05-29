@@ -258,7 +258,7 @@ object MainForm: TMainForm
       Left = 8
       Top = 236
       Width = 264
-      Height = 250
+      Height = 285
       Caption = ' Now Playing Stream'
       Color = $00170B07
       Font.Charset = DEFAULT_CHARSET
@@ -315,6 +315,15 @@ object MainForm: TMainForm
         Height = 140
         Center = True
         Stretch = True
+      end
+      object btnLoadImgUrl: TButton
+        Left = 10
+        Top = 235
+        Width = 244
+        Height = 32
+        Caption = '🌐 Load HTTPS Image...'
+        TabOrder = 0
+        OnClick = btnLoadImgUrlClick
       end
     end
   end

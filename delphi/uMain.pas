@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP, StrUtils, Clipbrd, jpeg;
+  Dialogs, StdCtrls, Grids, ExtCtrls, IniFiles, ShellAPI, IdHTTP, StrUtils, Clipbrd, jpeg, IdSSLOpenSSL;
 
 type
   TServerProfile = record
@@ -71,6 +71,7 @@ type
     imgNowPlaying: TImage;
     lblNowDetails: TLabel;
     lblNowSubDetails: TLabel;
+    btnLoadImgUrl: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnAddServerClick(Sender: TObject);
     procedure btnSaveServerClick(Sender: TObject);
@@ -90,6 +91,7 @@ type
     procedure cmbFontsChange(Sender: TObject);
     procedure cmbTimeshiftChange(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure btnLoadImgUrlClick(Sender: TObject);
   private
     { Private declarations }
     FProfiles: array of TServerProfile;
@@ -1560,6 +1562,97 @@ begin
   else
   begin
     DrawPlaceholderLogo(Matched.Name);
+  end;
+end;
+
+procedure TMainForm.btnLoadImgUrlClick(Sender: TObject);
+var
+  UrlStr: string;
+  TempHttp: TIdHTTP;
+  SSLHandler: TIdSSLIOHandlerSocketOpenSSL;
+  TempFile: string;
+  FS: TFileStream;
+  JP: TJPEGImage;
+begin
+  UrlStr := 'https://images.unsplash.com/photo-1579202673506-ca3ce28943ef?q=80&w=400';
+  if not InputQuery('Load HTTPS Image', 'Enter HTTPS URL of a JPEG image:', UrlStr) then
+    Exit;
+
+  UrlStr := Trim(UrlStr);
+  if UrlStr = '' then
+    Exit;
+
+  lblStatus.Caption := 'Status: Fetching custom image over HTTPS SSL/TLS...';
+  Application.ProcessMessages;
+
+  TempHttp := TIdHTTP.Create(nil);
+  SSLHandler := TIdSSLIOHandlerSocketOpenSSL.Create(nil);
+  try
+    TempHttp.ReadTimeout := 5000;
+    TempHttp.ConnectTimeout := 5000;
+    TempHttp.AllowCookies := True;
+
+    // Use secure modern TLS v1.2 specification
+    SSLHandler.SSLOptions.Method := sslvTLSv1_2;
+    SSLHandler.SSLOptions.Mode := sslmClient;
+    SSLHandler.SSLOptions.VerifyMode := [];
+    SSLHandler.SSLOptions.VerifyDepth := 0;
+
+    TempHttp.IOHandler := SSLHandler;
+
+    TempFile := ExtractFilePath(Application.ExeName) + 'custom_url_image.jpg';
+    if FileExists(TempFile) then
+      DeleteFile(TempFile);
+
+    FS := TFileStream.Create(TempFile, fmCreate);
+    try
+      try
+        TempHttp.Get(UrlStr, FS);
+      except
+        on E: Exception do
+        begin
+          FS.Free;
+          FS := nil;
+          if FileExists(TempFile) then
+            DeleteFile(TempFile);
+          ShowMessage('HTTPS Connection / SSL Handshake Failed: ' + E.Message + sLineBreak + 
+                      'Please ensure OpenSSL DLLs (ssleay32.dll & libeay32.dll) are placed in the app directory.');
+          lblStatus.Caption := 'Status: HTTPS SSL load failed.';
+          Exit;
+        end;
+      end;
+    finally
+      if Assigned(FS) then
+        FS.Free;
+    end;
+
+    if FileExists(TempFile) then
+    begin
+      JP := TJPEGImage.Create;
+      try
+        try
+          JP.LoadFromFile(TempFile);
+          imgNowPlaying.Picture.Assign(JP);
+          lblNowTitle.Caption := '🌐 CUSTOM IMAGE';
+          lblNowDetails.Caption := 'Source: HTTPS URL';
+          lblNowSubDetails.Caption := Copy(UrlStr, 1, 40) + '...';
+          lblStatus.Caption := 'Status: SSL/TLS Image retrieved successfully.';
+        except
+          on E: Exception do
+          begin
+            ShowMessage('Error displaying JPEG image: ' + E.Message + sLineBreak + 'Ensure the URL is a valid JPEG format.');
+            lblStatus.Caption := 'Status: Invalid JPEG error.';
+          end;
+        end;
+      finally
+        JP.Free;
+      end;
+      if FileExists(TempFile) then
+        DeleteFile(TempFile);
+    end;
+  finally
+    TempHttp.Free;
+    SSLHandler.Free;
   end;
 end;
 
