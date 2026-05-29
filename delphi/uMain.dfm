@@ -258,7 +258,7 @@ object MainForm: TMainForm
       Left = 8
       Top = 236
       Width = 264
-      Height = 285
+      Height = 295
       Caption = ' Now Playing Stream'
       Color = $00170B07
       Font.Charset = DEFAULT_CHARSET
@@ -308,6 +308,19 @@ object MainForm: TMainForm
         Font.Style = []
         ParentFont = False
       end
+      object lblNowEpg: TLabel
+        Left = 10
+        Top = 228
+        Width = 244
+        Height = 15
+        Caption = 'EPG: -'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clSkyBlue
+        Font.Height = -11
+        Font.Name = 'Segoe UI'
+        Font.Style = [fsItalic]
+        ParentFont = False
+      end
       object imgNowPlaying: TImage
         Left = 10
         Top = 44
@@ -318,7 +331,7 @@ object MainForm: TMainForm
       end
       object btnLoadImgUrl: TButton
         Left = 10
-        Top = 235
+        Top = 250
         Width = 244
         Height = 32
         Caption = '🌐 Load HTTPS Image...'

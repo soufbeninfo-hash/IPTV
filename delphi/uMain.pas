@@ -71,6 +71,7 @@ type
     imgNowPlaying: TImage;
     lblNowDetails: TLabel;
     lblNowSubDetails: TLabel;
+    lblNowEpg: TLabel;
     btnLoadImgUrl: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnAddServerClick(Sender: TObject);
@@ -1521,6 +1522,7 @@ begin
     lblNowTitle.Caption := '📺 SELECT A CHANNEL';
     lblNowDetails.Caption := 'Category: -';
     lblNowSubDetails.Caption := 'ID: -';
+    lblNowEpg.Caption := 'EPG: -';
     DrawPlaceholderLogo('-');
     Exit;
   end;
@@ -1528,6 +1530,10 @@ begin
   lblNowTitle.Caption := '🎬 ' + Matched.Name;
   lblNowDetails.Caption := 'Category: ' + Matched.CategoryId;
   lblNowSubDetails.Caption := 'ID: ' + Matched.StreamId;
+  if Matched.EpgChannelId <> '' then
+    lblNowEpg.Caption := 'EPG Live: ' + Matched.EpgChannelId
+  else
+    lblNowEpg.Caption := 'EPG Live: Not Available';
 
   IconUrl := Matched.Icon;
   if (IconUrl <> '') and (Pos('http', IconUrl) = 1) then
@@ -1595,6 +1601,7 @@ begin
             lblNowTitle.Caption := '🌐 CUSTOM IMAGE';
             lblNowDetails.Caption := 'Source: HTTPS URL';
             lblNowSubDetails.Caption := Copy(UrlStr, 1, 40) + '...';
+            lblNowEpg.Caption := 'EPG: Not Available';
             lblStatus.Caption := 'Status: Native Schannel Image retrieved successfully.';
           except
             on E: Exception do
