@@ -258,7 +258,7 @@ object MainForm: TMainForm
       Left = 8
       Top = 236
       Width = 264
-      Height = 295
+      Height = 310
       Caption = ' Now Playing Stream'
       Color = $00170B07
       Font.Charset = DEFAULT_CHARSET
@@ -271,22 +271,22 @@ object MainForm: TMainForm
       TabOrder = 4
       object lblNowTitle: TLabel
         Left = 10
-        Top = 20
+        Top = 18
         Width = 244
-        Height = 18
+        Height = 16
         Caption = '📺 SELECT A CHANNEL'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = clSkyBlue
-        Font.Height = -12
+        Font.Height = -11
         Font.Name = 'Segoe UI'
         Font.Style = [fsBold]
         ParentFont = False
       end
       object lblNowDetails: TLabel
         Left = 10
-        Top = 192
+        Top = 160
         Width = 244
-        Height = 15
+        Height = 14
         Caption = 'Category: -'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = clSilver
@@ -297,9 +297,9 @@ object MainForm: TMainForm
       end
       object lblNowSubDetails: TLabel
         Left = 10
-        Top = 210
+        Top = 174
         Width = 244
-        Height = 15
+        Height = 14
         Caption = 'ID: -'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = clSilver
@@ -310,9 +310,9 @@ object MainForm: TMainForm
       end
       object lblNowEpg: TLabel
         Left = 10
-        Top = 228
+        Top = 188
         Width = 244
-        Height = 15
+        Height = 14
         Caption = 'EPG: -'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = clSkyBlue
@@ -321,21 +321,59 @@ object MainForm: TMainForm
         Font.Style = [fsItalic]
         ParentFont = False
       end
+      object lblTsLossInfo: TLabel
+        Left = 10
+        Top = 202
+        Width = 244
+        Height = 14
+        Caption = 'TS Decoder Sync: Idle'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clOrange
+        Font.Height = -11
+        Font.Name = 'Segoe UI'
+        Font.Style = [fsBold]
+        ParentFont = False
+      end
       object imgNowPlaying: TImage
         Left = 10
-        Top = 44
+        Top = 36
         Width = 244
-        Height = 140
+        Height = 120
         Center = True
         Stretch = True
       end
+      object chkSkipPacketLoss: TCheckBox
+        Left = 10
+        Top = 218
+        Width = 244
+        Height = 18
+        Caption = 'Skip Packet Loss (Auto Recovery)'
+        Checked = True
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clYellow
+        Font.Height = -11
+        Font.Name = 'Segoe UI'
+        Font.Style = [fsItalic]
+        ParentFont = False
+        State = cbChecked
+        TabOrder = 0
+      end
+      object btnPlayIntegrated: TButton
+        Left = 10
+        Top = 242
+        Width = 244
+        Height = 28
+        Caption = '▶️ Play in Integrated Player'
+        TabOrder = 1
+        OnClick = btnPlayIntegratedClick
+      end
       object btnLoadImgUrl: TButton
         Left = 10
-        Top = 250
+        Top = 274
         Width = 244
-        Height = 32
+        Height = 28
         Caption = '🌐 Load HTTPS Image...'
-        TabOrder = 0
+        TabOrder = 2
         OnClick = btnLoadImgUrlClick
       end
     end

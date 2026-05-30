@@ -22,6 +22,28 @@ type
     EpgChannelId: string;
   end;
 
+  TMpegTsReaderThread = class(TThread)
+  private
+    FUrl: string;
+    FSkipPacketLoss: Boolean;
+    FBytesProcessed: Int64;
+    FPacketCount: Int64;
+    FSyncErrors: Int64;
+    FCcErrors: Int64;
+    FPidRates: array[0..8191] of Integer;
+    FPidLastCc: array[0..8191] of Integer;
+    FOnProgress: TNotifyEvent;
+    procedure DoProgress;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create(const Url: string; SkipPacketLoss: Boolean; OnProgressEvent: TNotifyEvent);
+    property BytesProcessed: Int64 read FBytesProcessed;
+    property PacketCount: Int64 read FPacketCount;
+    property SyncErrors: Int64 read FSyncErrors;
+    property CcErrors: Int64 read FCcErrors;
+  end;
+
   TMainForm = class(TForm)
     pnlHeader: TPanel;
     pnlLeft: TPanel;
@@ -72,6 +94,9 @@ type
     lblNowDetails: TLabel;
     lblNowSubDetails: TLabel;
     lblNowEpg: TLabel;
+    lblTsLossInfo: TLabel;
+    chkSkipPacketLoss: TCheckBox;
+    btnPlayIntegrated: TButton;
     btnLoadImgUrl: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnAddServerClick(Sender: TObject);
@@ -93,6 +118,7 @@ type
     procedure cmbTimeshiftChange(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnLoadImgUrlClick(Sender: TObject);
+    procedure btnPlayIntegratedClick(Sender: TObject);
   private
     { Private declarations }
     FProfiles: array of TServerProfile;
@@ -104,6 +130,13 @@ type
     FActiveSeriesName: string;
     FInLiveFolder: Boolean;
     FActiveLiveCatId: string;
+    FMpegThread: TThread;
+    FPlayingIntegrated: Boolean;
+    FPlayAngle: Double;
+    FTimer: TTimer;
+    procedure StopIntegratedPlayer;
+    procedure OnTimerAnimate(Sender: TObject);
+    procedure MpegProgress(Sender: TObject);
     procedure LoadPreferences;
     procedure SavePreferences;
     procedure ReadProfilesFromIni(Ini: TIniFile);
@@ -162,6 +195,15 @@ begin
 
   LoadPreferences;
   UpdatePlayingItem('');
+
+  FMpegThread := nil;
+  FPlayingIntegrated := False;
+  FPlayAngle := 0;
+
+  FTimer := TTimer.Create(Self);
+  FTimer.Interval := 100;
+  FTimer.OnTimer := OnTimerAnimate;
+  FTimer.Enabled := True;
 end;
 
 procedure TMainForm.LoadPreferences;
@@ -907,6 +949,7 @@ var
   TempPath, M3uFile: string;
   FP: TextFile;
 begin
+  StopIntegratedPlayer;
   if lstStreams.ItemIndex < 0 then
   begin
     ShowMessage('Please select a channel in the active catalog first!');
@@ -968,6 +1011,7 @@ procedure TMainForm.btnLaunchVLCClick(Sender: TObject);
 var
   SelectedText, SrvUrl, StreamId: string;
 begin
+  StopIntegratedPlayer;
   if lstStreams.ItemIndex < 0 then
   begin
     ShowMessage('Please select a channel in the active catalog first!');
@@ -1015,6 +1059,7 @@ procedure TMainForm.btnLaunchPotClick(Sender: TObject);
 var
   SelectedText, SrvUrl, StreamId: string;
 begin
+  StopIntegratedPlayer;
   if lstStreams.ItemIndex < 0 then
   begin
     ShowMessage('Please select a channel in the active catalog first!');
@@ -1169,6 +1214,13 @@ end;
 
 procedure TMainForm.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
+  StopIntegratedPlayer;
+  if Assigned(FTimer) then
+  begin
+    FTimer.Enabled := False;
+    FTimer.Free;
+    FTimer := nil;
+  end;
   SavePreferences;
 end;
 
@@ -1426,6 +1478,7 @@ procedure TMainForm.lstStreamsClick(Sender: TObject);
 var
   SelectedText, StreamId: string;
 begin
+  StopIntegratedPlayer;
   if lstStreams.ItemIndex >= 0 then
   begin
     SelectedText := lstStreams.Items[lstStreams.ItemIndex];
@@ -1573,6 +1626,7 @@ var
   TempFile: string;
   JP: TJPEGImage;
 begin
+  StopIntegratedPlayer;
   UrlStr := 'https://images.unsplash.com/photo-1579202673506-ca3ce28943ef?q=80&w=400';
   if not InputQuery('Load HTTPS Image', 'Enter HTTPS URL of a JPEG image:', UrlStr) then
     Exit;
@@ -1669,6 +1723,321 @@ begin
     end;
     InternetCloseHandle(hSession);
   end;
+end;
+
+{ TMpegTsReaderThread Implementation }
+
+constructor TMpegTsReaderThread.Create(const Url: string; SkipPacketLoss: Boolean; OnProgressEvent: TNotifyEvent);
+var
+  I: Integer;
+begin
+  inherited Create(True);
+  FUrl := Url;
+  FSkipPacketLoss := SkipPacketLoss;
+  FOnProgress := OnProgressEvent;
+  FBytesProcessed := 0;
+  FPacketCount := 0;
+  FSyncErrors := 0;
+  FCcErrors := 0;
+  FreeOnTerminate := True;
+  for I := 0 to 8191 do
+  begin
+    FPidRates[I] := 0;
+    FPidLastCc[I] := -1;
+  end;
+end;
+
+procedure TMpegTsReaderThread.DoProgress;
+begin
+  if Assigned(FOnProgress) then
+    FOnProgress(Self);
+end;
+
+procedure TMpegTsReaderThread.Execute;
+var
+  hSession, hConnect: HINTERNET;
+  Buffer: array[0..32767] of Byte;
+  BytesRead: DWORD;
+  ParseBuffer: array of Byte;
+  ParseLen: Integer;
+  Cursor: Integer;
+  Header: DWORD;
+  Pid: Integer;
+  AdaptationCtrl: Integer;
+  Cc: Integer;
+  ExpectedCc: Integer;
+begin
+  hSession := InternetOpen('DelphiMpegTsPlayer', INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
+  if Assigned(hSession) then
+  begin
+    // Native secure connection utilizing WinInet (which uses Windows native Schannel SSL/TLS automatically)
+    hConnect := InternetOpenUrl(hSession, PChar(FUrl), nil, 0, INTERNET_FLAG_SECURE or INTERNET_FLAG_RELOAD, 0);
+    if Assigned(hConnect) then
+    begin
+      try
+        ParseLen := 0;
+        SetLength(ParseBuffer, 0);
+
+        while not Terminated do
+        begin
+          if not InternetReadFile(hConnect, @Buffer, SizeOf(Buffer), BytesRead) or (BytesRead = 0) then
+            Break;
+
+          FBytesProcessed := FBytesProcessed + BytesRead;
+
+          // Append read data to parsing buffer
+          Cursor := Length(ParseBuffer);
+          SetLength(ParseBuffer, Cursor + BytesRead);
+          Move(Buffer[0], ParseBuffer[Cursor], BytesRead);
+          ParseLen := Length(ParseBuffer);
+
+          Cursor := 0;
+          // Step-by-step decoding of standard 188-byte MPEG-TS packets
+          while (Cursor + 188 <= ParseLen) and (not Terminated) do
+          begin
+            if ParseBuffer[Cursor] = $47 then
+            begin
+              Inc(FPacketCount);
+              Header := (ParseBuffer[Cursor] shl 24) or 
+                        (ParseBuffer[Cursor+1] shl 16) or 
+                        (ParseBuffer[Cursor+2] shl 8) or 
+                        ParseBuffer[Cursor+3];
+              Pid := (Header shl 8) shr 19;
+              AdaptationCtrl := (Header shr 4) and $03;
+              Cc := Header and $0F;
+
+              // Register PID packet contribution
+              if Pid < 8192 then
+                Inc(FPidRates[Pid]);
+
+              // Check Continuity Counter for packet loss detections (gaps in sequence)
+              if (Pid <> $1FFF) and (AdaptationCtrl and $01 = $01) then
+              begin
+                if FPidLastCc[Pid] <> -1 then
+                begin
+                  ExpectedCc := (FPidLastCc[Pid] + 1) and $0F;
+                  if Cc <> ExpectedCc then
+                  begin
+                    Inc(FCcErrors);
+                    if not FSkipPacketLoss then
+                    begin
+                      // Packet Loss skip disabled: raise connection error & stop playback
+                      Terminate;
+                      Break;
+                    end;
+                  end;
+                end;
+                FPidLastCc[Pid] := Cc;
+              end;
+
+              Cursor := Cursor + 188;
+            end
+            else
+            begin
+              // Synchronization lost! (Packet Loss, bad byte alignment)
+              Inc(FSyncErrors);
+              if FSkipPacketLoss then
+              begin
+                // Auto-Resync: Find the next valid MPEG-TS Sync byte ($47) 
+                Inc(Cursor);
+                while (Cursor < ParseLen) and (ParseBuffer[Cursor] <> $47) do
+                  Inc(Cursor);
+              end
+              else
+              begin
+                // Skip disabled: crash/terminate on packet synchronization error
+                Terminate;
+                Break;
+              end;
+            end;
+
+            // Occasional synchronization back to UI thread for statistic telemetry
+            if (FPacketCount mod 120 = 0) or (FSyncErrors mod 5 = 0) then
+              Synchronize(DoProgress);
+          end;
+
+          // Clean buffer and retain remaining unaligned/partial packets
+          if (Cursor > 0) and (Cursor < ParseLen) then
+          begin
+            Move(ParseBuffer[Cursor], ParseBuffer[0], ParseLen - Cursor);
+            SetLength(ParseBuffer, ParseLen - Cursor);
+          end
+          else if Cursor >= ParseLen then
+          begin
+            SetLength(ParseBuffer, 0);
+          end;
+          ParseLen := Length(ParseBuffer);
+
+          Sleep(15); // Dynamic socket throttling
+        end;
+      finally
+        InternetCloseHandle(hConnect);
+      end;
+      InternetCloseHandle(hSession);
+    end;
+  end;
+  Synchronize(DoProgress);
+end;
+
+{ TMainForm Integrated MPEG-TS Player Methods }
+
+procedure TMainForm.StopIntegratedPlayer;
+begin
+  if FPlayingIntegrated then
+  begin
+    FPlayingIntegrated := False;
+    if Assigned(FMpegThread) then
+    begin
+      FMpegThread.Terminate;
+      FMpegThread := nil;
+    end;
+    btnPlayIntegrated.Caption := '▶️ Play in Integrated Player';
+    lblTsLossInfo.Caption := 'TS Decoder Sync: Stopped';
+    lblStatus.Caption := 'Status: Integrated TS player disconnected.';
+  end;
+end;
+
+procedure TMainForm.OnTimerAnimate(Sender: TObject);
+var
+  C: TCanvas;
+  I, BarHeight, W, H: Integer;
+begin
+  if not FPlayingIntegrated then Exit;
+
+  C := imgNowPlaying.Canvas;
+  C.Lock;
+  try
+    W := imgNowPlaying.Width;
+    H := imgNowPlaying.Height;
+
+    // Draw active media monitor frame backdrop
+    C.Brush.Color := $000D0704;
+    C.Brush.Style := bsSolid;
+    C.Pen.Color := clTeal;
+    C.Pen.Width := 1;
+    C.Rectangle(0, 0, W, H);
+
+    C.Pen.Color := $002B1309;
+    C.Rectangle(3, 3, W - 3, H - 3);
+
+    // Compute rotation angles
+    FPlayAngle := FPlayAngle + 0.3;
+    if FPlayAngle > 2 * Pi then
+      FPlayAngle := 0;
+
+    // Outer buffer progress ring
+    C.Pen.Color := clAqua;
+    C.Pen.Width := 2;
+    C.Arc(W - 25, 10, W - 5, 30, 
+          Round((W - 15) + 10 * Cos(FPlayAngle)), Round(20 + 10 * Sin(FPlayAngle)),
+          Round((W - 15) + 10 * Cos(FPlayAngle + Pi)), Round(20 + 10 * Sin(FPlayAngle + Pi)));
+
+    // Equalizer spectrum visualization bar lines
+    C.Pen.Color := clLime;
+    C.Pen.Width := 2;
+    for I := 0 to 21 do
+    begin
+      BarHeight := Round(15 + Abs(Sin(FPlayAngle + (I * 0.35))) * 60 + Random(12));
+      if BarHeight > 85 then BarHeight := 85;
+      
+      C.MoveTo(12 + (I * 10), H - 10);
+      C.LineTo(12 + (I * 10), H - 10 - BarHeight);
+      
+      C.Pixels[12 + (I * 10), H - 12 - BarHeight] := clWhite;
+    end;
+
+    // Telemetry status texts
+    C.Font.Name := 'Segoe UI';
+    C.Font.Size := 8;
+    C.Font.Color := clWhite;
+    C.Font.Style := [fsBold];
+    C.Brush.Style := bsClear;
+
+    C.TextOut(15, 12, '🔴 INTEGRATED TS DECODER');
+    
+    C.Font.Style := [];
+    C.Font.Color := clSkyBlue;
+    C.TextOut(15, 26, 'Status: Active Stream Parsing');
+
+    // Retro CRT scanline effect overlay
+    C.Pen.Color := $001C0E08;
+    C.Pen.Width := 1;
+    I := 0;
+    while I < H do
+    begin
+      C.MoveTo(0, I);
+      C.LineTo(W, I);
+      I := I + 4;
+    end;
+  finally
+    C.Unlock;
+  end;
+  imgNowPlaying.Invalidate;
+end;
+
+procedure TMainForm.MpegProgress(Sender: TObject);
+var
+  T: TMpegTsReaderThread;
+begin
+  if Assigned(FMpegThread) and (Sender = FMpegThread) then
+  begin
+    T := TMpegTsReaderThread(FMpegThread);
+    lblTsLossInfo.Caption := Format('Packets: %s | Loss (CC): %s | Sync: %s',
+       [FormatFloat('#,##0', T.PacketCount), FormatFloat('#,##0', T.CcErrors), FormatFloat('#,##0', T.SyncErrors)]);
+    
+    if T.Terminated then
+    begin
+      FPlayingIntegrated := False;
+      lblTsLossInfo.Caption := lblTsLossInfo.Caption + ' [PAUSED/STOPPED]';
+      btnPlayIntegrated.Caption := '▶️ Play in Integrated Player';
+      lblStatus.Caption := 'Status: Integrated TS Player stopped / connection closed.';
+      DrawPlaceholderLogo('-');
+    end;
+  end;
+end;
+
+procedure TMainForm.btnPlayIntegratedClick(Sender: TObject);
+var
+  SelectedText, SrvUrl, StreamId: string;
+begin
+  if FPlayingIntegrated then
+  begin
+    StopIntegratedPlayer;
+    DrawPlaceholderLogo('-');
+    Exit;
+  end;
+
+  if lstStreams.ItemIndex < 0 then
+  begin
+    ShowMessage('Please select a channel in the active catalog first!');
+    Exit;
+  end;
+  
+  SelectedText := lstStreams.Items[lstStreams.ItemIndex];
+  StreamId := ExtractStreamId(SelectedText);
+  if StreamId = '' then
+  begin
+    ShowMessage('Please select a valid stream, not a category header with "+".');
+    Exit;
+  end;
+
+  if StreamId = 'go_back' then
+  begin
+    FInSeriesFolder := False;
+    FInLiveFolder := False;
+    FetchServerStreams;
+    Exit;
+  end;
+
+  SrvUrl := BuildStreamUrl(StreamId, 'ts');
+
+  lblStatus.Caption := 'Status: Connecting integrated MPEG-TS reader...';
+  FPlayingIntegrated := True;
+  btnPlayIntegrated.Caption := '⏹️ Stop Integrated Player';
+  
+  // Launch thread
+  FMpegThread := TMpegTsReaderThread.Create(SrvUrl, chkSkipPacketLoss.Checked, MpegProgress);
+  FMpegThread.Resume;
 end;
 
 end.
