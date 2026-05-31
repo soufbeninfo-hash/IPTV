@@ -164,6 +164,105 @@ implementation
 
 {$R *.dfm}
 
+function WideCharToUtf8(Val: Word): string;
+begin
+  if Val < $80 then
+    Result := Char(Val)
+  else if Val < $800 then
+    Result := Char($C0 or (Val shr 6)) + Char($80 or (Val and $3F))
+  else
+    Result := Char($E0 or (Val shr 12)) + Char($80 or ((Val shr 6) and $3F)) + Char($80 or (Val and $3F));
+end;
+
+function Utf8ToWideString(const S: string): WideString;
+var
+  Len: Integer;
+begin
+  Result := '';
+  if S = '' then Exit;
+  Len := MultiByteToWideChar(65001, 0, PChar(S), Length(S), nil, 0);
+  if Len > 0 then
+  begin
+    SetLength(Result, Len);
+    MultiByteToWideChar(65001, 0, PChar(S), Length(S), PWideChar(Result), Len);
+  end;
+end;
+
+function WideStringToAnsiString(const WS: WideString): string;
+var
+  Len: Integer;
+begin
+  Result := '';
+  if WS = '' then Exit;
+  Len := WideCharToMultiByte(0, 0, PWideChar(WS), Length(WS), nil, 0, nil, nil);
+  if Len > 0 then
+  begin
+    SetLength(Result, Len);
+    WideCharToMultiByte(0, 0, PWideChar(WS), Length(WS), PChar(Result), Len, nil, nil);
+  end;
+end;
+
+function DecodeJsonUtf8String(const S: string): string;
+var
+  I, Len, HexVal: Integer;
+  UTF8Str: string;
+  HexStr: string;
+begin
+  UTF8Str := '';
+  Len := Length(S);
+  I := 1;
+  while I <= Len do
+  begin
+    if (S[I] = '\') and (I + 1 <= Len) then
+    begin
+      if S[I + 1] = 'u' then
+      begin
+        if I + 5 <= Len then
+        begin
+          HexStr := Copy(S, I + 2, 4);
+          try
+            HexVal := StrToInt('$' + HexStr);
+            UTF8Str := UTF8Str + WideCharToUtf8(HexVal);
+          except
+            UTF8Str := UTF8Str + '\u' + HexStr;
+          end;
+          Inc(I, 6);
+        end
+        else
+        begin
+          UTF8Str := UTF8Str + '\u';
+          Inc(I, 2);
+        end;
+      end
+      else if S[I + 1] = 'n' then
+      begin
+        UTF8Str := UTF8Str + #13#10;
+        Inc(I, 2);
+      end
+      else if S[I + 1] = 't' then
+      begin
+        UTF8Str := UTF8Str + #9;
+        Inc(I, 2);
+      end
+      else if S[I + 1] = 'r' then
+      begin
+        Inc(I, 2);
+      end
+      else
+      begin
+        UTF8Str := UTF8Str + S[I + 1];
+        Inc(I, 2);
+      end;
+    end
+    else
+    begin
+      UTF8Str := UTF8Str + S[I];
+      Inc(I);
+    end;
+  end;
+  Result := WideStringToAnsiString(Utf8ToWideString(UTF8Str));
+end;
+
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
   Self.WindowState := wsMaximized;
@@ -494,8 +593,7 @@ begin
     Result := Copy(ObjStr, ValStart, ValEnd - ValStart);
   end;
   
-  Result := StringReplace(Result, '\"', '"', [rfReplaceAll]);
-  Result := StringReplace(Result, '\/', '/', [rfReplaceAll]);
+  Result := DecodeJsonUtf8String(Result);
 end;
 
 procedure TMainForm.ParseAndPopulateStreams(const JsonData: string);
