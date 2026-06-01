@@ -110,6 +110,15 @@ type
     FInLiveFolder: Boolean;
     FActiveLiveCatId: string;
     FCategories: array of TCategoryItem;
+    FLastPlayedStreamId: string;
+    FLastPlayedStreamMode: string;
+    FLastPlayedStreamCatId: string;
+    FLastInLiveFolder: Boolean;
+    FLastInSeriesFolder: Boolean;
+    FLastActiveSeriesId: string;
+    FLastActiveSeriesName: string;
+    procedure RestoreLastPlayedSelection;
+    procedure StoreLastPlayed(const StreamId: string);
     procedure LoadAndCacheCategories;
     procedure ParseCategories(const JsonData: string);
     function GetCategoryName(const CatId: string): string;
@@ -1189,6 +1198,7 @@ begin
     Exit;
   end;
 
+  StoreLastPlayed(StreamId);
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
 
   // Write temporary windows .m3u file & launch standard player association
@@ -1249,6 +1259,7 @@ begin
     Exit;
   end;
 
+  StoreLastPlayed(StreamId);
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
   // Attempt to invoke protocol launcher straight in VLC
   ShellExecute(Handle, 'open', PChar('vlc://' + SrvUrl), nil, nil, SW_SHOWNORMAL);
@@ -1296,6 +1307,7 @@ begin
     Exit;
   end;
 
+  StoreLastPlayed(StreamId);
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
   ShellExecute(Handle, 'open', PChar('potplayer://' + SrvUrl), nil, nil, SW_SHOWNORMAL);
 end;
@@ -1807,6 +1819,44 @@ begin
   else
   begin
     DrawPlaceholderLogo(Matched.Name);
+  end;
+end;
+
+procedure TMainForm.RestoreLastPlayedSelection;
+var
+  I: Integer;
+  SearchStr: string;
+begin
+  if (FLastPlayedStreamId = '') or (not chkRemember.Checked) then Exit;
+
+  SearchStr := '[ID: ' + FLastPlayedStreamId + ']';
+  for I := 0 to lstStreams.Count - 1 do
+  begin
+    if Pos(SearchStr, lstStreams.Items[I]) > 0 then
+    begin
+      lstStreams.ItemIndex := I;
+      UpdatePlayingItem(FLastPlayedStreamId);
+      if I > 0 then
+        lstStreams.TopIndex := I - 1
+      else
+        lstStreams.TopIndex := I;
+      Exit;
+    end;
+  end;
+end;
+
+procedure TMainForm.StoreLastPlayed(const StreamId: string);
+begin
+  if (StreamId <> '') and (StreamId <> 'go_back') then
+  begin
+    FLastPlayedStreamId := StreamId;
+    FLastPlayedStreamMode := FStreamMode;
+    FLastPlayedStreamCatId := FActiveLiveCatId; 
+    FLastInLiveFolder := FInLiveFolder;
+    FLastInSeriesFolder := FInSeriesFolder;
+    FLastActiveSeriesId := FActiveSeriesId;
+    FLastActiveSeriesName := FActiveSeriesName;
+    SavePreferences;
   end;
 end;
 
