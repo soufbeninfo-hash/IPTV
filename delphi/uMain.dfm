@@ -258,7 +258,7 @@ object MainForm: TMainForm
       Left = 8
       Top = 236
       Width = 264
-      Height = 310
+      Height = 246
       Caption = ' Now Playing Stream'
       Color = $00170B07
       Font.Charset = DEFAULT_CHARSET
@@ -321,19 +321,6 @@ object MainForm: TMainForm
         Font.Style = [fsItalic]
         ParentFont = False
       end
-      object lblTsLossInfo: TLabel
-        Left = 10
-        Top = 202
-        Width = 244
-        Height = 14
-        Caption = 'TS Decoder Sync: Idle'
-        Font.Charset = DEFAULT_CHARSET
-        Font.Color = clOrange
-        Font.Height = -11
-        Font.Name = 'Segoe UI'
-        Font.Style = [fsBold]
-        ParentFont = False
-      end
       object imgNowPlaying: TImage
         Left = 10
         Top = 36
@@ -342,38 +329,13 @@ object MainForm: TMainForm
         Center = True
         Stretch = True
       end
-      object chkSkipPacketLoss: TCheckBox
-        Left = 10
-        Top = 218
-        Width = 244
-        Height = 18
-        Caption = 'Skip Packet Loss (Auto Recovery)'
-        Checked = True
-        Font.Charset = DEFAULT_CHARSET
-        Font.Color = clYellow
-        Font.Height = -11
-        Font.Name = 'Segoe UI'
-        Font.Style = [fsItalic]
-        ParentFont = False
-        State = cbChecked
-        TabOrder = 0
-      end
-      object btnPlayIntegrated: TButton
-        Left = 10
-        Top = 242
-        Width = 244
-        Height = 28
-        Caption = '▶️ Play in Integrated Player'
-        TabOrder = 1
-        OnClick = btnPlayIntegratedClick
-      end
       object btnLoadImgUrl: TButton
         Left = 10
-        Top = 274
+        Top = 208
         Width = 244
         Height = 28
         Caption = '🌐 Load HTTPS Image...'
-        TabOrder = 2
+        TabOrder = 0
         OnClick = btnLoadImgUrlClick
       end
     end
