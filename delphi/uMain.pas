@@ -22,6 +22,11 @@ type
     EpgChannelId: string;
   end;
 
+  TCategoryItem = record
+    Id: string;
+    Name: string;
+  end;
+
   TMpegTsReaderThread = class(TThread)
   private
     FUrl: string;
@@ -130,6 +135,11 @@ type
     FActiveSeriesName: string;
     FInLiveFolder: Boolean;
     FActiveLiveCatId: string;
+    FCategories: array of TCategoryItem;
+    procedure LoadAndCacheCategories;
+    procedure ParseCategories(const JsonData: string);
+    function GetCategoryName(const CatId: string): string;
+    procedure DisplayCachedCategories;
     FMpegThread: TThread;
     FPlayingIntegrated: Boolean;
     FPlayAngle: Double;
@@ -261,6 +271,152 @@ begin
     end;
   end;
   Result := WideStringToAnsiString(Utf8ToWideString(UTF8Str));
+end;
+
+procedure TMainForm.LoadAndCacheCategories;
+var
+  Srv: TServerProfile;
+  CacheFile, Action, URL, JSONData: string;
+  SL: TStringList;
+begin
+  if (FActiveProfileIndex < 0) or (FActiveProfileIndex >= Length(FProfiles)) then
+    Exit;
+
+  Srv := FProfiles[FActiveProfileIndex];
+  CacheFile := ExtractFilePath(Application.ExeName) + 'categories_' + Srv.Username + '_' + FStreamMode + '.json';
+
+  JSONData := '';
+  if FileExists(CacheFile) then
+  begin
+    SL := TStringList.Create;
+    try
+      try
+        SL.LoadFromFile(CacheFile);
+        JSONData := SL.Text;
+      except
+        JSONData := '';
+      end;
+    finally
+      SL.Free;
+    end;
+  end;
+
+  if JSONData = '' then
+  begin
+    if FStreamMode = 'live' then
+      Action := 'get_live_categories'
+    else if FStreamMode = 'movie' then
+      Action := 'get_vod_streams_categories'
+    else
+      Action := 'get_series_categories';
+
+    URL := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=' + Action;
+    lblStatus.Caption := 'Loading categories from server (' + Action + ')...';
+    Application.ProcessMessages;
+
+    try
+      JSONData := HTTPClient.Get(URL);
+      if JSONData <> '' then
+      begin
+        SL := TStringList.Create;
+        try
+          SL.Text := JSONData;
+          SL.SaveToFile(CacheFile);
+        finally
+          SL.Free;
+        end;
+      end;
+    except
+      on E: Exception do
+      begin
+        JSONData := '[]';
+      end;
+    end;
+  end;
+
+  ParseCategories(JSONData);
+end;
+
+procedure TMainForm.ParseCategories(const JsonData: string);
+var
+  P, PStart, PEnd, CatCount: Integer;
+  ObjStr, SId, SName: string;
+begin
+  SetLength(FCategories, 0);
+  CatCount := 0;
+
+  P := 1;
+  while True do
+  begin
+    PStart := PosEx('{', JsonData, P);
+    if PStart = 0 then Break;
+
+    PEnd := PosEx('}', JsonData, PStart);
+    if PEnd = 0 then Break;
+
+    ObjStr := Copy(JsonData, PStart, PEnd - PStart + 1);
+
+    SId := GetJsonValue(ObjStr, 'category_id');
+    SName := GetJsonValue(ObjStr, 'category_name');
+
+    SId := Trim(StringReplace(SId, '"', '', [rfReplaceAll]));
+    SId := Trim(StringReplace(SId, '''', '', [rfReplaceAll]));
+    SName := Trim(StringReplace(SName, '"', '', [rfReplaceAll]));
+    SName := Trim(StringReplace(SName, '''', '', [rfReplaceAll]));
+
+    if (SId <> '') and (SName <> '') then
+    begin
+      SetLength(FCategories, CatCount + 1);
+      FCategories[CatCount].Id := SId;
+      FCategories[CatCount].Name := SName;
+      Inc(CatCount);
+    end;
+
+    P := PEnd + 1;
+  end;
+end;
+
+function TMainForm.GetCategoryName(const CatId: string): string;
+var
+  I: Integer;
+begin
+  Result := CatId; // Default fallback to ID if not found
+  for I := 0 to Length(FCategories) - 1 do
+  begin
+    if FCategories[I].Id = CatId then
+    begin
+      Result := FCategories[I].Name;
+      Exit;
+    end;
+  end;
+end;
+
+procedure TMainForm.DisplayCachedCategories;
+var
+  I: Integer;
+begin
+  lstStreams.Items.BeginUpdate;
+  try
+    lstStreams.Items.Clear;
+    SetLength(FStreams, Length(FCategories));
+
+    lstStreams.Items.Add('+ ' + UpperCase(FStreamMode) + ' CATEGORIES');
+
+    for I := 0 to Length(FCategories) - 1 do
+    begin
+      FStreams[I].Name := FCategories[I].Name;
+      FStreams[I].StreamId := FCategories[I].Id;
+      FStreams[I].CategoryId := 'Category Folder';
+      FStreams[I].Icon := '';
+      FStreams[I].EpgChannelId := '';
+
+      lstStreams.Items.Add('   📂 ' + FCategories[I].Name + ' [ID: ' + FCategories[I].Id + ']');
+    end;
+
+    lblStatus.Caption := 'Displaying ' + IntToStr(Length(FCategories)) + ' ' + FStreamMode + ' category folders (loaded from cache).';
+  finally
+    lstStreams.Items.EndUpdate;
+  end;
 end;
 
 procedure TMainForm.FormCreate(Sender: TObject);
@@ -512,18 +668,28 @@ begin
     Exit;
   end;
 
+  // Load and cache categories from file or server
+  LoadAndCacheCategories;
+
+  // If we are not inside a specific category folder, show the loaded categories instead of streams
+  if not FInLiveFolder then
+  begin
+    DisplayCachedCategories;
+    Exit;
+  end;
+
   Srv := FProfiles[FActiveProfileIndex];
-  lblStatus.Caption := 'Loading ' + FStreamMode + ' streams from server (please wait...)';
+  lblStatus.Caption := 'Loading category streams from server (please wait...)';
   Application.ProcessMessages;
   
   try
-    // Build Xtream Codes Player API url based on active mode
+    // Build Xtream Codes Player API url with category filter for efficiency
     if FStreamMode = 'live' then
-      ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_live_streams'
+      ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_live_streams&category_id=' + FActiveLiveCatId
     else if FStreamMode = 'movie' then
-      ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_vod_streams'
+      ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_vod_streams&category_id=' + FActiveLiveCatId
     else
-      ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_series';
+      ApiUrl := Srv.Host + '/player_api.php?username=' + Srv.Username + '&password=' + Srv.Password + '&action=get_series&category_id=' + FActiveLiveCatId;
 
     // Fetch stream payload via Indy IdHTTP
     ResJSON := HTTPClient.Get(ApiUrl);
@@ -692,94 +858,73 @@ begin
     end;
 
     // Handle display based on StreamMode and folder state
-    if (FStreamMode = 'live') and (not FInLiveFolder) then
+    if FInLiveFolder then
     begin
-      // Parent TV category folders!
-      SetLength(FStreams, CatCount);
-      lstStreams.Items.Add('+ LIVE CATEGORIES');
-      for I := 0 to CatCount - 1 do
+      SetLength(FStreams, TempCount + 1);
+      FStreams[0].Name := 'go_back';
+      FStreams[0].StreamId := 'go_back';
+      FStreams[0].CategoryId := 'System';
+      FStreams[0].Icon := '';
+      FStreams[0].EpgChannelId := '';
+      
+      lstStreams.Items.Add('   ⬅️ [BACK TO ' + UpperCase(FStreamMode) + ' CATEGORIES] [ID: go_back]');
+      lstStreams.Items.Add('+ ' + UpperCase(GetCategoryName(FActiveLiveCatId)));
+      
+      for I := 0 to TempCount - 1 do
       begin
-        FStreams[I].Name := UniqueCats[I];
-        FStreams[I].StreamId := UniqueCats[I];
-        FStreams[I].CategoryId := 'Category Folder';
-        FStreams[I].Icon := '';
-        FStreams[I].EpgChannelId := '';
+        FStreams[I + 1] := TempStreams[I];
         
-        lstStreams.Items.Add('   📂 ' + UniqueCats[I] + ' [ID: ' + UniqueCats[I] + ']');
+        ItemText := '   ';
+        if FStreamMode = 'series' then
+          ItemText := ItemText + '🎬 '
+        else if TempStreams[I].Icon <> '' then
+          ItemText := ItemText + '🖼️ '
+        else if FStreamMode = 'movie' then
+          ItemText := ItemText + '🎥 '
+        else
+          ItemText := ItemText + '📺 ';
+
+        ItemText := ItemText + TempStreams[I].Name + ' [ID: ' + TempStreams[I].StreamId + ']';
+        if TempStreams[I].EpgChannelId <> '' then
+          ItemText := ItemText + ' (EPG: ' + TempStreams[I].EpgChannelId + ')';
+          
+        lstStreams.Items.Add(ItemText);
       end;
-      lblStatus.Caption := 'Displaying ' + IntToStr(CatCount) + ' Live TV category folders.';
+      lblStatus.Caption := 'Displaying category folder: ' + GetCategoryName(FActiveLiveCatId) + ' with ' + IntToStr(TempCount) + ' items!';
     end
     else
     begin
-      // If we are in a live folder, we add a back button as index 0, and then list only items from FActiveLiveCatId
-      if (FStreamMode = 'live') and FInLiveFolder then
+      // Fallback or Search / Flattened list
+      SetLength(FStreams, TempCount);
+      for I := 0 to TempCount - 1 do
+        FStreams[I] := TempStreams[I];
+        
+      for I := 0 to CatCount - 1 do
       begin
-        SetLength(FStreams, 1);
-        FStreams[0].Name := 'go_back';
-        FStreams[0].StreamId := 'go_back';
-        FStreams[0].CategoryId := 'System';
-        FStreams[0].Icon := '';
-        FStreams[0].EpgChannelId := '';
-        
-        lstStreams.Items.Add('   ⬅️ [BACK TO LIVE CATEGORIES] [ID: go_back]');
-        lstStreams.Items.Add('+ ' + UpperCase(FActiveLiveCatId));
-        
-        Count := 1;
-        for I := 0 to TempCount - 1 do
+        lstStreams.Items.Add('+ ' + UpperCase(GetCategoryName(UniqueCats[I])));
+        for J := 0 to TempCount - 1 do
         begin
-          if TempStreams[I].CategoryId = FActiveLiveCatId then
+          if FStreams[J].CategoryId = UniqueCats[I] then
           begin
-            SetLength(FStreams, Count + 1);
-            FStreams[Count] := TempStreams[I];
-            
             ItemText := '   ';
-            if TempStreams[I].Icon <> '' then
+            if FStreamMode = 'series' then
+              ItemText := ItemText + '🎬 '
+            else if FStreams[J].Icon <> '' then
               ItemText := ItemText + '🖼️ '
-            else
-              ItemText := ItemText + '📺 ';
-
-            ItemText := ItemText + TempStreams[I].Name + ' [ID: ' + TempStreams[I].StreamId + ']';
-            if TempStreams[I].EpgChannelId <> '' then
-              ItemText := ItemText + ' (EPG: ' + TempStreams[I].EpgChannelId + ')';
-              
-            lstStreams.Items.Add(ItemText);
-            Inc(Count);
-          end;
-        end;
-        lblStatus.Caption := 'Displaying category folder: ' + FActiveLiveCatId + ' with ' + IntToStr(Count - 1) + ' channels!';
-      end
-      else
-      begin
-        // Movies or Series or standard fallback (flat grouped)
-        SetLength(FStreams, TempCount);
-        for I := 0 to TempCount - 1 do
-          FStreams[I] := TempStreams[I];
-          
-        for I := 0 to CatCount - 1 do
-        begin
-          lstStreams.Items.Add('+ ' + UpperCase(UniqueCats[I]));
-          for J := 0 to TempCount - 1 do
-          begin
-            if FStreams[J].CategoryId = UniqueCats[I] then
-            begin
-              ItemText := '   ';
-              if FStreamMode = 'series' then
-                ItemText := ItemText + '📂 '
-              else if FStreams[J].Icon <> '' then
-                ItemText := ItemText + '🖼️ '
+              else if FStreamMode = 'movie' then
+                ItemText := ItemText + '🎥 '
               else
                 ItemText := ItemText + '📺 ';
 
-              ItemText := ItemText + FStreams[J].Name + ' [ID: ' + FStreams[J].StreamId + ']';
-              if FStreams[J].EpgChannelId <> '' then
-                ItemText := ItemText + ' (EPG: ' + FStreams[J].EpgChannelId + ')';
+            ItemText := ItemText + FStreams[J].Name + ' [ID: ' + FStreams[J].StreamId + ']';
+            if FStreams[J].EpgChannelId <> '' then
+              ItemText := ItemText + ' (EPG: ' + FStreams[J].EpgChannelId + ')';
 
-              lstStreams.Items.Add(ItemText);
-            end;
+            lstStreams.Items.Add(ItemText);
           end;
         end;
-        lblStatus.Caption := 'Successfully parsed & grouped ' + IntToStr(TempCount) + ' channels dynamically!';
       end;
+      lblStatus.Caption := 'Successfully parsed & grouped ' + IntToStr(TempCount) + ' channels dynamically!';
     end;
   finally
     lstStreams.Items.EndUpdate;
@@ -1079,7 +1224,7 @@ begin
     Exit;
   end;
 
-  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  if (not FInLiveFolder) then
   begin
     FInLiveFolder := True;
     FActiveLiveCatId := StreamId;
@@ -1140,7 +1285,7 @@ begin
     Exit;
   end;
 
-  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  if (not FInLiveFolder) then
   begin
     FInLiveFolder := True;
     FActiveLiveCatId := StreamId;
@@ -1188,7 +1333,7 @@ begin
     Exit;
   end;
 
-  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  if (not FInLiveFolder) then
   begin
     FInLiveFolder := True;
     FActiveLiveCatId := StreamId;
@@ -1269,7 +1414,7 @@ begin
     Exit;
   end;
 
-  if (FStreamMode = 'live') and (not FInLiveFolder) then
+  if (not FInLiveFolder) then
   begin
     FInLiveFolder := True;
     FActiveLiveCatId := StreamId;
