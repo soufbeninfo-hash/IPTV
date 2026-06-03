@@ -524,23 +524,33 @@ object MainForm: TMainForm
       object btnExportConsolidated: TButton
         Left = 10
         Top = 48
-        Width = 325
+        Width = 215
         Height = 30
-        Caption = '📁 Export All Listed Channels to M3U'
+        Caption = '📁 Export M3U Playlist'
         Font.Color = clGreen
         Font.Style = [fsBold]
         TabOrder = 3
         OnClick = btnExportConsolidatedClick
       end
       object btnCopyLink: TButton
-        Left = 345
+        Left = 232
         Top = 48
-        Width = 325
+        Width = 215
         Height = 30
-        Caption = '🔗 Copy Active Channel Stream Link'
+        Caption = '🔗 Copy Stream Link'
         Font.Style = [fsBold]
         TabOrder = 4
         OnClick = btnCopyLinkClick
+      end
+      object btnShowImdb: TButton
+        Left = 455
+        Top = 48
+        Width = 215
+        Height = 30
+        Caption = '🎬 View IMDb Info'
+        Font.Style = [fsBold]
+        TabOrder = 5
+        OnClick = btnShowImdbClick
       end
     end
   end

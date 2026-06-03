@@ -103,6 +103,50 @@ export function ExternalPlayerGuide({ server, activeStream, mode, accentColor }:
               </div>
             </div>
 
+            {/* IMDb Movie & Series parsed metadata details card overlay */}
+            {(activeStream.rating || activeStream.plot || activeStream.genre || activeStream.director || activeStream.cast || activeStream.releaseDate) && (
+              <div className="p-3 bg-yellow-500/[0.03] border border-yellow-500/15 rounded-lg space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-[10px] text-yellow-500 font-bold uppercase tracking-wide">
+                  <span className="flex items-center gap-1">🍿 IMDb parsed details</span>
+                  {activeStream.rating && (
+                    <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 rounded text-[10px]">
+                      ⭐ {activeStream.rating}/10
+                    </span>
+                  )}
+                </div>
+                
+                {activeStream.genre && (
+                  <div className="text-[11px] text-gray-300">
+                    <span className="text-gray-500 font-medium">Genre:</span> <span className="text-gray-200">{activeStream.genre}</span>
+                  </div>
+                )}
+                
+                {activeStream.releaseDate && (
+                  <div className="text-[11px] text-gray-300">
+                    <span className="text-gray-500 font-medium font-mono">Year:</span> <span className="text-gray-200 font-mono">{activeStream.releaseDate}</span>
+                  </div>
+                )}
+
+                {activeStream.director && (
+                  <div className="text-[11px] text-gray-300 leading-tight">
+                    <span className="text-gray-500 font-medium">Director:</span> <span className="text-gray-200">{activeStream.director}</span>
+                  </div>
+                )}
+
+                {activeStream.cast && (
+                  <div className="text-[11px] text-gray-300 leading-tight truncate">
+                    <span className="text-gray-500 font-medium">Cast:</span> <span className="text-gray-200" title={activeStream.cast}>{activeStream.cast}</span>
+                  </div>
+                )}
+
+                {activeStream.plot && (
+                  <div className="text-[11px] text-gray-400 pt-1.5 leading-relaxed border-t border-slate-850/50 mt-1 select-text">
+                    {activeStream.plot}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <span className="block text-[11px] text-gray-200 mb-2 font-semibold flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-yellow-400" />

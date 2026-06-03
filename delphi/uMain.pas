@@ -20,6 +20,13 @@ type
     CategoryId: string;
     Icon: string;
     EpgChannelId: string;
+    ImdbId: string;
+    Rating: string;
+    Plot: string;
+    Genre: string;
+    Director: string;
+    Cast: string;
+    ReleaseDate: string;
   end;
 
   TCategoryItem = record
@@ -66,6 +73,7 @@ type
     btnLaunchPot: TButton;
     btnExportConsolidated: TButton;
     btnCopyLink: TButton;
+    btnShowImdb: TButton;
     HTTPClient: TIdHTTP;
     chkRemember: TCheckBox;
     lblFontChoice: TLabel;
@@ -92,6 +100,7 @@ type
     procedure btnLaunchPotClick(Sender: TObject);
     procedure btnExportConsolidatedClick(Sender: TObject);
     procedure btnCopyLinkClick(Sender: TObject);
+    procedure btnShowImdbClick(Sender: TObject);
     procedure lstStreamsDblClick(Sender: TObject);
     procedure lstStreamsClick(Sender: TObject);
     procedure cmbFontsChange(Sender: TObject);
@@ -733,6 +742,7 @@ procedure TMainForm.ParseAndPopulateStreams(const JsonData: string);
 var
   P, PStart, PEnd, Count, I, J: Integer;
   ObjStr, SName, SId, SCatId, SIcon, SEpg, ItemText: string;
+  SImdbId, SRating, SPlot, SGenre, SDirector, SCast, SReleaseDate: string;
   UniqueCats: array of string;
   CatCount: Integer;
   Exists: Boolean;
@@ -779,6 +789,35 @@ begin
       SEpg := Trim(StringReplace(SEpg, '"', '', [rfReplaceAll]));
       if SEpg = 'null' then SEpg := '';
       
+      SImdbId := GetJsonValue(ObjStr, 'imdb_id');
+      if SImdbId = '' then SImdbId := GetJsonValue(ObjStr, 'imdbId');
+      if SImdbId = '' then SImdbId := GetJsonValue(ObjStr, 'imdb');
+      SImdbId := Trim(StringReplace(SImdbId, '"', '', [rfReplaceAll]));
+
+      SRating := GetJsonValue(ObjStr, 'rating');
+      if SRating = '' then SRating := GetJsonValue(ObjStr, 'imdb_rating');
+      if SRating = '' then SRating := GetJsonValue(ObjStr, 'rating_5based');
+      SRating := Trim(StringReplace(SRating, '"', '', [rfReplaceAll]));
+
+      SPlot := GetJsonValue(ObjStr, 'plot');
+      if SPlot = '' then SPlot := GetJsonValue(ObjStr, 'description');
+      SPlot := Trim(StringReplace(SPlot, '"', '', [rfReplaceAll]));
+
+      SGenre := GetJsonValue(ObjStr, 'genre');
+      SGenre := Trim(StringReplace(SGenre, '"', '', [rfReplaceAll]));
+
+      SDirector := GetJsonValue(ObjStr, 'director');
+      SDirector := Trim(StringReplace(SDirector, '"', '', [rfReplaceAll]));
+
+      SCast := GetJsonValue(ObjStr, 'cast');
+      if SCast = '' then SCast := GetJsonValue(ObjStr, 'actors');
+      SCast := Trim(StringReplace(SCast, '"', '', [rfReplaceAll]));
+
+      SReleaseDate := GetJsonValue(ObjStr, 'release_date');
+      if SReleaseDate = '' then SReleaseDate := GetJsonValue(ObjStr, 'releaseDate');
+      if SReleaseDate = '' then SReleaseDate := GetJsonValue(ObjStr, 'year');
+      SReleaseDate := Trim(StringReplace(SReleaseDate, '"', '', [rfReplaceAll]));
+
       if SName <> '' then
       begin
         if SId = '' then SId := '0';
@@ -789,6 +828,13 @@ begin
         TempStreams[TempCount].CategoryId := SCatId;
         TempStreams[TempCount].Icon := SIcon;
         TempStreams[TempCount].EpgChannelId := SEpg;
+        TempStreams[TempCount].ImdbId := SImdbId;
+        TempStreams[TempCount].Rating := SRating;
+        TempStreams[TempCount].Plot := SPlot;
+        TempStreams[TempCount].Genre := SGenre;
+        TempStreams[TempCount].Director := SDirector;
+        TempStreams[TempCount].Cast := SCast;
+        TempStreams[TempCount].ReleaseDate := SReleaseDate;
         Inc(TempCount);
       end;
       
@@ -1023,18 +1069,39 @@ begin
     FStreams[0].CategoryId := 'ADVANCED CINEMA';
     FStreams[0].Icon := '';
     FStreams[0].EpgChannelId := 'MOVIE_SINTEL';
+    FStreams[0].ImdbId := 'tt1727587';
+    FStreams[0].Rating := '7.4';
+    FStreams[0].Plot := 'A girl named Sintel searches for her companion baby dragon, Scales. When she finds him, Scales has grown into a massive dragon who does not remember her.';
+    FStreams[0].Genre := 'Animation, Short, Fantasy';
+    FStreams[0].Director := 'Colin Levy';
+    FStreams[0].Cast := 'Halina Reijn, Thom Hoffman';
+    FStreams[0].ReleaseDate := '2010';
 
     FStreams[1].Name := 'Tears of Steel (VFX Sci-Fi Showcase)';
     FStreams[1].StreamId := 'tears_steel';
     FStreams[1].CategoryId := 'ADVANCED CINEMA';
     FStreams[1].Icon := '';
     FStreams[1].EpgChannelId := 'MOVIE_TEARS';
+    FStreams[1].ImdbId := 'tt2285752';
+    FStreams[1].Rating := '5.6';
+    FStreams[1].Plot := 'A group of warriors and scientists pick a spot in Rotterdam to stage a counter-attack against giant destructive robots that have conquered the world.';
+    FStreams[1].Genre := 'Short, Sci-Fi';
+    FStreams[1].Director := 'Ian Hubert';
+    FStreams[1].Cast := 'Derek de Lint, Sergio Hasselbaink, Rogier Schippers';
+    FStreams[1].ReleaseDate := '2012';
 
     FStreams[2].Name := 'Big Buck Bunny HLS Classic';
     FStreams[2].StreamId := 'bbb_classic';
     FStreams[2].CategoryId := 'CLASSIC SELECTIONS';
     FStreams[2].Icon := '';
     FStreams[2].EpgChannelId := 'MOVIE_BBB';
+    FStreams[2].ImdbId := 'tt1254207';
+    FStreams[2].Rating := '6.3';
+    FStreams[2].Plot := 'A giant and giant-hearted rabbit''s day is ruined by three bullying rodents when they kill a butterfly, but he prepares a systematic and comical revenge.';
+    FStreams[2].Genre := 'Animation, Comedy, Short';
+    FStreams[2].Director := 'Sacha Goedegebure';
+    FStreams[2].Cast := 'None';
+    FStreams[2].ReleaseDate := '2008';
 
     lstStreams.Items.Add('+ ADVANCED CINEMA');
     lstStreams.Items.Add('   🖼️ Sintel (Ultra HD Blender Film) [ID: sintel_movie] (EPG: MOVIE_SINTEL)');
@@ -1051,12 +1118,26 @@ begin
     FStreams[0].CategoryId := 'POPULAR TV SHOWS';
     FStreams[0].Icon := '';
     FStreams[0].EpgChannelId := '';
+    FStreams[0].ImdbId := 'tt3438062';
+    FStreams[0].Rating := '7.1';
+    FStreams[0].Plot := 'Koro, a quirky llama from Patagonia, faces several hilarious obstacles while attempting to cross a deserted highway in search of delicious food.';
+    FStreams[0].Genre := 'Animation, Comedy, Adventure';
+    FStreams[0].Director := 'Pablo Vazquez';
+    FStreams[0].Cast := 'None';
+    FStreams[0].ReleaseDate := '2013';
 
     FStreams[1].Name := 'Cosmos: A Spacetime Odyssey';
     FStreams[1].StreamId := 'cosmos_series';
     FStreams[1].CategoryId := 'POPULAR TV SHOWS';
     FStreams[1].Icon := '';
     FStreams[1].EpgChannelId := '';
+    FStreams[1].ImdbId := 'tt3018022';
+    FStreams[1].Rating := '9.3';
+    FStreams[1].Plot := 'An adventure where we find how we discovered the laws of nature and found our coordinates in spacetime, narrated by Neil deGrasse Tyson.';
+    FStreams[1].Genre := 'Documentary, Biography, Sci-Fi';
+    FStreams[1].Director := 'Brannon Braga';
+    FStreams[1].Cast := 'Neil deGrasse Tyson, Keythe Farley, Amanda Seyfried';
+    FStreams[1].ReleaseDate := '2014';
 
     lstStreams.Items.Add('+ POPULAR TV SHOWS');
     lstStreams.Items.Add('   📂 Caminandes Animation Shorts [ID: caminandes_series]');
@@ -1392,6 +1473,74 @@ begin
   SrvUrl := BuildStreamUrl(StreamId, 'ts');
   Clipboard.AsText := SrvUrl;
   ShowMessage('Stream link copied to clipboard successfully!' + #13#10 + SrvUrl);
+end;
+
+procedure TMainForm.btnShowImdbClick(Sender: TObject);
+var
+  SelectedText, StreamId: string;
+  I: Integer;
+  Matched: TStreamItem;
+  Found: Boolean;
+  Details: string;
+begin
+  if lstStreams.ItemIndex < 0 then
+  begin
+    ShowMessage('Please select a movie or series in the active catalog first!');
+    Exit;
+  end;
+  SelectedText := lstStreams.Items[lstStreams.ItemIndex];
+  StreamId := ExtractStreamId(SelectedText);
+  if (StreamId = '') or (StreamId = 'go_back') then
+  begin
+    ShowMessage('Please select a valid movie or series, not a category or back button.');
+    Exit;
+  end;
+
+  Found := False;
+  for I := 0 to Length(FStreams) - 1 do
+  begin
+    if FStreams[I].StreamId = StreamId then
+    begin
+      Matched := FStreams[I];
+      Found := True;
+      Break;
+    end;
+  end;
+
+  if not Found then
+  begin
+    ShowMessage('Stream details not found in cache.');
+    Exit;
+  end;
+
+  if (Matched.ImdbId = '') and (Matched.Rating = '') and (Matched.Plot = '') then
+  begin
+    ShowMessage('No IMDb data is parsed for this channel or category.' + #13#10 + 
+                'Name: ' + Matched.Name + #13#10 + 
+                'Category: ' + Matched.CategoryId);
+    Exit;
+  end;
+
+  Details := '🎬 TITLE: ' + Matched.Name + #13#10 + #13#10;
+  if Matched.ImdbId <> '' then
+    Details := Details + '🌐 IMDb ID: ' + Matched.ImdbId + #13#10;
+  if Matched.Rating <> '' then
+    Details := Details + '⭐ Rating: ' + Matched.Rating + '/10' + #13#10;
+  if Matched.ReleaseDate <> '' then
+    Details := Details + '📅 Released: ' + Matched.ReleaseDate + #13#10;
+  if Matched.Genre <> '' then
+    Details := Details + '🏷️ Genre: ' + Matched.Genre + #13#10;
+  if Matched.Director <> '' then
+    Details := Details + '🎥 Director: ' + Matched.Director + #13#10;
+  if Matched.Cast <> '' then
+    Details := Details + '👥 Cast: ' + Matched.Cast + #13#10;
+  
+  if Matched.Plot <> '' then
+  begin
+    Details := Details + #13#10 + '📖 PLOT / STORYLINE:' + #13#10 + Matched.Plot;
+  end;
+
+  ShowMessage(Details);
 end;
 
 procedure TMainForm.lstStreamsDblClick(Sender: TObject);
@@ -1783,12 +1932,32 @@ begin
   end;
 
   lblNowTitle.Caption := '🎬 ' + Matched.Name;
-  lblNowDetails.Caption := 'Category: ' + Matched.CategoryId;
-  lblNowSubDetails.Caption := 'ID: ' + Matched.StreamId;
-  if Matched.EpgChannelId <> '' then
-    lblNowEpg.Caption := 'EPG Live: ' + Matched.EpgChannelId
+  if (Matched.Rating <> '') or (Matched.Plot <> '') then
+  begin
+    if Matched.Rating <> '' then
+      lblNowDetails.Caption := 'IMDb Score: ' + Matched.Rating + '/10 ★'
+    else
+      lblNowDetails.Caption := 'Category: ' + Matched.CategoryId;
+      
+    if Matched.Genre <> '' then
+      lblNowSubDetails.Caption := 'Genre: ' + Copy(Matched.Genre, 1, 35)
+    else
+      lblNowSubDetails.Caption := 'Year: ' + Matched.ReleaseDate;
+      
+    if Matched.Plot <> '' then
+      lblNowEpg.Caption := 'Plot: ' + Copy(Matched.Plot, 1, 40) + '...'
+    else
+      lblNowEpg.Caption := 'EPG Live: Not Available';
+  end
   else
-    lblNowEpg.Caption := 'EPG Live: Not Available';
+  begin
+    lblNowDetails.Caption := 'Category: ' + Matched.CategoryId;
+    lblNowSubDetails.Caption := 'ID: ' + Matched.StreamId;
+    if Matched.EpgChannelId <> '' then
+      lblNowEpg.Caption := 'EPG Live: ' + Matched.EpgChannelId
+    else
+      lblNowEpg.Caption := 'EPG Live: Not Available';
+  end;
 
   IconUrl := Matched.Icon;
   if (IconUrl <> '') and (Pos('http', IconUrl) = 1) then
